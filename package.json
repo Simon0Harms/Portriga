@@ -1,0 +1,17 @@
+{
+  "name": "portriga",
+  "version": "1.0.0",
+  "description": "Portriga – Online-Kartenspiel (Stichvorhersage) mit server-autoritativer Logik",
+  "license": "GPL-3.0-or-later",
+  "author": "Simon Harms (Simon0Harms)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/simulate.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}

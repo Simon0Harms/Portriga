@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Portriga – Online</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- Startbildschirm -->
+  <section id="screen-home" class="screen">
+    <div class="panel">
+      <h1>Portriga</h1>
+      <p class="sub">Stichvorhersage-Kartenspiel · 2–7 Spieler</p>
+      <label>Dein Name
+        <input id="name" maxlength="20" placeholder="Spieler" />
+      </label>
+      <div class="row">
+        <button id="btn-create" class="primary">Raum erstellen</button>
+      </div>
+      <div class="divider">oder beitreten</div>
+      <div class="row">
+        <input id="join-code" maxlength="4" placeholder="CODE" class="code-input" />
+        <button id="btn-join">Beitreten</button>
+      </div>
+      <p id="home-msg" class="msg"></p>
+    </div>
+  </section>
+
+  <!-- Lobby -->
+  <section id="screen-lobby" class="screen hidden">
+    <div class="panel">
+      <h2>Lobby</h2>
+      <p>Raumcode: <span id="lobby-code" class="code-badge"></span>
+        <button id="btn-copy" class="link">kopieren</button></p>
+      <ul id="seat-list" class="seats"></ul>
+      <div id="host-controls" class="row hidden">
+        <button id="btn-addbot">+ Bot</button>
+        <button id="btn-rmbot">– Bot</button>
+        <button id="btn-start" class="primary">Spiel starten</button>
+      </div>
+      <p id="lobby-hint" class="msg"></p>
+      <button id="btn-leave-lobby" class="link">Raum verlassen</button>
+    </div>
+  </section>
+
+  <!-- Spiel -->
+  <section id="screen-game" class="screen hidden">
+    <header id="game-header">
+      <div class="hdr-item">Runde <b><span id="round-num"></span>/<span id="round-total"></span></b></div>
+      <div class="hdr-item">Karten: <b id="cards-count"></b></div>
+      <div class="hdr-item">Trumpf: <span id="trump" class="trump"></span></div>
+      <div class="hdr-item">Stiche: <b id="tricks-progress"></b></div>
+    </header>
+
+    <div id="table">
+      <div id="opponents"></div>
+      <div id="trick-area">
+        <div id="trick-cards"></div>
+        <div id="last-trick"></div>
+      </div>
+      <div id="turn-banner"></div>
+    </div>
+
+    <div id="bidding" class="hidden">
+      <p>Wie viele Stiche machst du? <span class="hint">(auch 0 ist eine Ansage)</span></p>
+      <div id="bid-buttons"></div>
+    </div>
+
+    <div id="myhand-wrap">
+      <div id="my-meta"></div>
+      <div id="myhand"></div>
+    </div>
+
+    <div id="overlay" class="hidden">
+      <div class="panel">
+        <h2 id="ov-title"></h2>
+        <ul id="ov-scores" class="scoreboard"></ul>
+        <button id="ov-next" class="primary hidden">Nächste Runde</button>
+        <button id="ov-home" class="link hidden">Zurück zum Start</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="toast" class="toast hidden"></div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

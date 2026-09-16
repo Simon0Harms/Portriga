@@ -1,0 +1,24 @@
+[Unit]
+Description=Portriga – Online-Kartenspiel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=portriga
+WorkingDirectory=/opt/portriga
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=3
+
+# Härtung
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/portriga
+
+[Install]
+WantedBy=multi-user.target

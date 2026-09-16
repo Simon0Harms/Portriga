@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# IM CONTAINER (Debian 13 / Trixie) als root ausführen.
+# Installiert Node, richtet Dienst + optional nginx ein.
+# Erwartet die App unter /opt/portriga (vorher hineinkopieren oder GIT_URL setzen).
+#   WANT_NGINX=1      -> nginx als Reverse-Proxy auf Port 80 (mit WebSocket-Upgrade)
+#   GIT_URL=...       -> falls App noch nicht vorhanden, von dort klonen
+#   USE_NODESOURCE=1  -> Node via NodeSource (neuere LTS) statt Debian-Paket
+#   NODE_MAJOR=22     -> NodeSource-Major (nur mit USE_NODESOURCE=1)
+set -euo pipefail
+APP_DIR="/opt/portriga"
+SVC_USER="portriga"
+WANT_NGINX="${WANT_NGINX:-0}"
+GIT_URL="${GIT_URL:-}"
+USE_NODESOURCE="${USE_NODESOURCE:-0}"
+NODE_MAJOR="${NODE_MAJOR:-22}"
+
+echo ">> System aktualisieren…"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y ca-certificates curl gnupg git
+
+if [ ! -f "$APP_DIR/server.js" ]; then
+  if [ -n "$GIT_URL" ]; then
+    echo ">> Klone App von $GIT_URL …"
+    git clone "$GIT_URL" "$APP_DIR"
+  else
+    echo "FEHLER: $APP_DIR/server.js fehlt und kein GIT_URL gesetzt." >&2
+    echo "App zuerst nach $APP_DIR kopieren (siehe README)." >&2
+    exit 1
+  fi
+fi
+
+# --- Node.js ---
+# Standard: Debian-13-Paket = Node.js 20 LTS. Reicht für diese App (>=18)
+# und vermeidet den NodeSource/Trixie-Key-Fallstrick (sqv lehnt SHA-1 ab).
+if [ "$USE_NODESOURCE" = "1" ]; then
+  echo ">> Node.js ${NODE_MAJOR}.x via NodeSource (keyring/deb822)…"
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+  cat > /etc/apt/sources.list.d/nodesource.sources <<SRC
+Types: deb
+URIs: https://deb.nodesource.com/node_${NODE_MAJOR}.x
+Suites: nodistro
+Components: main
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/nodesource.gpg
+SRC
+  apt-get update -y
+  apt-get install -y nodejs
+else
+  echo ">> Node.js aus dem Debian-13-Repo (Node 20 LTS)…"
+  apt-get install -y nodejs npm
+fi
+echo "Node $(node -v), npm $(npm -v)"
+
+echo ">> Dienstbenutzer anlegen…"
+id "$SVC_USER" &>/dev/null || useradd --system --home "$APP_DIR" --shell /usr/sbin/nologin "$SVC_USER"
+
+echo ">> Abhängigkeiten installieren…"
+cd "$APP_DIR"
+npm ci --omit=dev 2>/dev/null || npm install --omit=dev
+chown -R "$SVC_USER":"$SVC_USER" "$APP_DIR"
+
+echo ">> systemd-Dienst einrichten…"
+install -m 0644 "$APP_DIR/deploy/portriga.service" /etc/systemd/system/portriga.service
+systemctl daemon-reload
+systemctl enable --now portriga
+sleep 1
+systemctl --no-pager --full status portriga | head -n 6 || true
+
+if [ "$WANT_NGINX" = "1" ]; then
+  echo ">> nginx-Reverse-Proxy einrichten…"
+  apt-get install -y nginx
+  install -m 0644 "$APP_DIR/deploy/nginx-portriga.conf" /etc/nginx/sites-available/portriga
+  ln -sf /etc/nginx/sites-available/portriga /etc/nginx/sites-enabled/portriga
+  rm -f /etc/nginx/sites-enabled/default
+  nginx -t && systemctl restart nginx
+fi
+
+IP="$(ip -4 addr show eth0 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1)"
+echo
+echo "FERTIG."
+if [ "$WANT_NGINX" = "1" ]; then
+  echo "Erreichbar unter:  http://${IP:-<container-ip>}/"
+else
+  echo "Erreichbar unter:  http://${IP:-<container-ip>}:3000/"
+fi
+echo "Logs:  journalctl -u portriga -f"
