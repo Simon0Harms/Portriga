@@ -235,3 +235,5 @@ button.link{background:none;border:none;color:var(--accent);padding:.3em;text-de
 /* Hand nicht unter den fixen Voice- (links) / Chat-Buttons (rechts) verstecken */
 @media (min-width:880px){ #myhand-wrap{padding-left:215px;padding-right:215px} }
 @media (max-width:879px){ #myhand-wrap{padding-bottom:calc(66px + env(safe-area-inset-bottom,0px))} }
+.feedback{margin-top:1rem;text-align:center}
+.feedback a{color:inherit;text-decoration:underline}
