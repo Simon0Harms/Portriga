@@ -186,6 +186,89 @@ function leaveVoice(room, clientId) {
   if (room.voice && room.voice.delete(clientId)) broadcastVoice(room);
 }
 
+/* ---- Abstimmung: Spielstart / nächste Runde (Issue #9) ----
+ * room.vote = { kind:'start'|'next', votes:{clientId:'yes'|'no'},
+ *               remainingMs, deadline, paused, timer }
+ * - Stimmberechtigt sind alle verbundenen menschlichen Spieler.
+ * - Stimmen alle mit Ja -> sofort Start.
+ * - Stimmt jemand mit Nein -> Zeit wird angehalten, bis alle Nein-Stimmen zu Ja wechseln.
+ * - Läuft die Zeit ab (nur möglich ohne Nein-Stimme) -> Start; Nichtwähler gelten als Zustimmung.
+ */
+const VOTE_MS = 60000;
+function voters(room) { return room.seats.filter(s => !s.bot && s.connected); }
+function voteView(room) {
+  const v = room.vote;
+  if (!v) return null;
+  const remainingMs = v.paused ? v.remainingMs : Math.max(0, v.deadline - Date.now());
+  return {
+    kind: v.kind, paused: v.paused, remainingMs, totalMs: VOTE_MS,
+    voters: voters(room).map(s => ({ id: s.id, name: s.name, vote: v.votes[s.id] || null })),
+  };
+}
+function clearVote(room) {
+  if (room.vote && room.vote.timer) clearTimeout(room.vote.timer);
+  room.vote = null;
+}
+function armVoteTimer(room) {
+  const v = room.vote;
+  if (v.timer) clearTimeout(v.timer);
+  v.timer = setTimeout(() => {
+    if (room.vote !== v || v.paused) return;
+    finishVote(room, 'Zeit abgelaufen');
+  }, v.remainingMs);
+  v.deadline = Date.now() + v.remainingMs;
+  v.paused = false;
+}
+function openVote(room, kind) {
+  clearVote(room);
+  room.vote = { kind, votes: {}, remainingMs: VOTE_MS, deadline: 0, paused: false, timer: null };
+  armVoteTimer(room);
+}
+/* Nach jeder Stimm-/Sitzänderung: sofort starten, pausieren oder fortsetzen. */
+function evaluateVote(room) {
+  const v = room.vote;
+  if (!v) return false;
+  const vs = voters(room);
+  if (vs.length > 0 && vs.every(s => v.votes[s.id] === 'yes')) {
+    finishVote(room, null);
+    return true;
+  }
+  const anyNo = vs.some(s => v.votes[s.id] === 'no');
+  if (anyNo && !v.paused) {
+    clearTimeout(v.timer); v.timer = null;
+    v.remainingMs = Math.max(0, v.deadline - Date.now());
+    v.paused = true;
+  } else if (!anyNo && v.paused) {
+    armVoteTimer(room);
+  }
+  return false;
+}
+function finishVote(room, reason) {
+  const kind = room.vote && room.vote.kind;
+  clearVote(room);
+  if (kind === 'start') {
+    if (room.game || room.seats.length < 2) { broadcast(room); return; }
+    room.game = new Game(room.seats.map(s => ({ id: s.id, name: s.name, bot: s.bot })));
+    room.game.start();
+    systemChat(room, `Das Spiel wurde gestartet${reason ? ` (${reason})` : ''}. Viel Erfolg!`);
+  } else if (kind === 'next') {
+    if (!room.game || room.game.phase !== 'roundEnd') { broadcast(room); return; }
+    room.game.nextRound();
+    if (reason) systemChat(room, `Nächste Runde gestartet (${reason}).`);
+  }
+  broadcast(room);
+  driveBots(room);
+}
+/* Rundenende erkannt -> Abstimmung für die nächste Runde öffnen. */
+function syncVote(room) {
+  const g = room.game;
+  if (g && g.phase === 'roundEnd') {
+    if (!room.vote || room.vote.kind !== 'next') openVote(room, 'next');
+  } else if (room.vote && room.vote.kind === 'next') {
+    clearVote(room);
+  }
+}
+
 function lobbyView(room) {
   return {
     type: 'state',
@@ -194,10 +277,12 @@ function lobbyView(room) {
     hostId: room.hostId,
     seats: room.seats.map(s => ({ id: s.id, name: s.name, bot: s.bot, connected: s.connected })),
     maxPlayers: MAX_PLAYERS,
+    vote: voteView(room),
   };
 }
 
 function broadcast(room) {
+  syncVote(room);
   if (!room.game) {
     for (const s of room.seats) {
       if (!s.bot) send(sockets.get(s.id), { ...lobbyView(room), youId: s.id });
@@ -214,6 +299,7 @@ function broadcast(room) {
       code: room.code,
       hostId: room.hostId,
       view: room.game.viewFor(s.id),
+      vote: voteView(room),
     });
   }
 }
@@ -249,6 +335,7 @@ function closeRoom(room, reason) {
       clientRoom.delete(s.id);
     }
   }
+  clearVote(room);
   rooms.delete(room.code);
 }
 
@@ -274,10 +361,12 @@ wss.on('connection', (ws) => {
     const seat = seatOf(room, id);
     if (seat) seat.connected = false;
     if (room.voice && room.voice.has(id)) room.voice.delete(id);
+    if (evaluateVote(room)) return;
     // Lobby: leert sich der Raum von Menschen -> schließen
     const humans = room.seats.filter(s => !s.bot);
     if (humans.every(s => !s.connected)) {
       // niemand mehr da: Raum verwerfen
+      clearVote(room);
       rooms.delete(room.code);
       for (const s of room.seats) clientRoom.delete(s.id);
       return;
@@ -301,6 +390,7 @@ function handle(ws, m) {
       if (room) {
         const seat = seatOf(room, id);
         if (seat) { seat.connected = true; seat.name = seat.name; }
+        evaluateVote(room);
         send(ws, { type: 'joined', code: room.code, clientId: id, isHost: room.hostId === id });
         sendChatHistory(ws, room);
         broadcast(room);
@@ -343,6 +433,7 @@ function handle(ws, m) {
       send(ws, { type: 'joined', code: room.code, clientId: ws.clientId, isHost: room.hostId === ws.clientId });
       sendChatHistory(ws, room);
       if (isNew) systemChat(room, `${seat.name} ist beigetreten.`);
+      if (evaluateVote(room)) return;
       broadcast(room);
       return;
     }
@@ -353,6 +444,7 @@ function handle(ws, m) {
       if (room.seats.length >= MAX_PLAYERS) throw new Error(`Max. ${MAX_PLAYERS} Plätze.`);
       const n = room.seats.filter(s => s.bot).length + 1;
       room.seats.push({ id: `bot-${room.code}-${Date.now()}-${n}`, name: `Bot ${n}`, bot: true, connected: true });
+      if (room.vote) { clearVote(room); systemChat(room, 'Abstimmung abgebrochen (Sitzordnung geändert).'); }
       broadcast(room);
       return;
     }
@@ -362,6 +454,7 @@ function handle(ws, m) {
       if (room.game) throw new Error('Nur in der Lobby.');
       const i = [...room.seats].reverse().findIndex(s => s.bot);
       if (i >= 0) room.seats.splice(room.seats.length - 1 - i, 1);
+      if (i >= 0 && room.vote) { clearVote(room); systemChat(room, 'Abstimmung abgebrochen (Sitzordnung geändert).'); }
       broadcast(room);
       return;
     }
@@ -370,11 +463,26 @@ function handle(ws, m) {
       const room = hostRoom(ws);
       if (room.game) throw new Error('Spiel läuft bereits.');
       if (room.seats.length < 2) throw new Error('Mindestens 2 Plätze nötig.');
-      room.game = new Game(room.seats.map(s => ({ id: s.id, name: s.name, bot: s.bot })));
-      room.game.start();
-      systemChat(room, 'Das Spiel wurde gestartet. Viel Erfolg!');
+      if (room.vote) throw new Error('Abstimmung läuft bereits.');
+      // Host eröffnet die Abstimmung und stimmt selbst mit Ja.
+      openVote(room, 'start');
+      room.vote.votes[ws.clientId] = 'yes';
+      systemChat(room, `Abstimmung zum Spielstart – ${VOTE_MS / 1000} s Zeit.`);
+      if (evaluateVote(room)) return;
       broadcast(room);
-      driveBots(room);
+      return;
+    }
+
+    case 'vote': {
+      const { room, seat } = memberRoom(ws);
+      if (seat.bot) return;
+      if (!room.vote) throw new Error('Keine Abstimmung aktiv.');
+      const choice = m.choice === 'no' ? 'no' : 'yes';
+      const prev = room.vote.votes[seat.id];
+      room.vote.votes[seat.id] = choice;
+      if (choice === 'no' && prev !== 'no') systemChat(room, `${seat.name} hat mit Nein gestimmt – Zeit angehalten.`);
+      if (evaluateVote(room)) return;
+      broadcast(room);
       return;
     }
 
@@ -395,11 +503,8 @@ function handle(ws, m) {
     }
 
     case 'nextRound': {
-      const { room } = playerRoom(ws);
-      room.game.nextRound();
-      broadcast(room);
-      driveBots(room);
-      return;
+      // Abwärtskompatibel: entspricht einer Ja-Stimme in der Rundenabstimmung.
+      return handle(ws, { type: 'vote', choice: 'yes' });
     }
 
     case 'chat': {
@@ -483,19 +588,23 @@ function leaveCurrent(clientId) {
     // während des Spiels: Sitz bleibt (Reconnect möglich), nur getrennt markieren
     const seat = seatOf(room, clientId);
     if (seat) seat.connected = false;
-    broadcast(room);
+    if (!evaluateVote(room)) broadcast(room);
     broadcastVoice(room);
     return;
   }
   // Lobby: Sitz entfernen
   room.seats = room.seats.filter(s => s.id !== clientId);
+  if (room.vote) {
+    delete room.vote.votes[clientId];
+    if (room.seats.length < 2 || !room.seats.some(s => !s.bot)) clearVote(room);
+  }
   if (room.hostId === clientId) {
     const nextHuman = room.seats.find(s => !s.bot);
-    if (nextHuman) { room.hostId = nextHuman.id; broadcast(room); broadcastVoice(room); }
+    if (nextHuman) { room.hostId = nextHuman.id; if (!evaluateVote(room)) broadcast(room); broadcastVoice(room); }
     else closeRoom(room, 'Host hat den Raum verlassen.');
     return;
   }
-  broadcast(room);
+  if (!evaluateVote(room)) broadcast(room);
   broadcastVoice(room);
 }
 

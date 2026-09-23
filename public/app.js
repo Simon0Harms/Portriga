@@ -68,6 +68,8 @@ function onMessage(m){
       if (m.hostId) hostId = m.hostId;
       enterRoomUI();
       if (m.lobby) renderLobby(m); else { lastState = m; renderGame(m); }
+      renderVote(m.lobby ? 'lobby-vote' : 'ov-vote', m.vote || null);
+      if (m.lobby) $('btn-start').disabled = !!m.vote;
       break;
     case 'rtcConfig': if (m.iceServers) rtcConfig = { iceServers: m.iceServers }; break;
     case 'voice': onVoiceMembers(m.members || []); break;
@@ -246,7 +248,6 @@ function renderGame(m){
       li.innerHTML=`<span>${i+1}. ${escapeHtml(p.name)}${p.bot?' 🤖':''} <span class="hint">(Ansage ${p.bid==null?'–':p.bid}, ${p.tricks} Stiche)</span></span><span class="sc">${p.lastDelta==null?'':`<span class="delta ${p.lastDelta>=0?'pos':'neg'}">${p.lastDelta>0?'+':''}${p.lastDelta}</span> `}${p.score}</span>`;
       sc.appendChild(li);
     });
-    $('ov-next').classList.toggle('hidden', v.phase!=='roundEnd');
     $('ov-home').classList.toggle('hidden', v.phase!=='gameEnd');
   } else ov.classList.add('hidden');
 }
@@ -282,7 +283,42 @@ $('btn-last-trick').onclick = () => $('last-trick-modal').classList.remove('hidd
 $('btn-lt-close').onclick = () => $('last-trick-modal').classList.add('hidden');
 $('last-trick-modal').onclick = e => { if (e.target.id === 'last-trick-modal') $('last-trick-modal').classList.add('hidden'); };
 
-$('ov-next').onclick = () => send({ type:'nextRound' });
+// ---------- Abstimmung Spielstart / nächste Runde (Issue #9) ----------
+let voteState = null, voteBox = null, voteTimer = null;
+function renderVote(boxId, v){
+  for (const id of ['lobby-vote','ov-vote']) if (id!==boxId) $(id).classList.add('hidden');
+  const box = $(boxId);
+  voteState = v ? { ...v, localDeadline: Date.now() + v.remainingMs } : null;
+  voteBox = box;
+  if (!v){ box.classList.add('hidden'); box.innerHTML=''; stopVoteTimer(); return; }
+  box.classList.remove('hidden');
+  const mine = (v.voters.find(x => x.id===clientId) || {}).vote;
+  const title = v.kind==='start' ? 'Spiel starten?' : 'Nächste Runde starten?';
+  const list = v.voters.map(x => {
+    const cls = x.vote || 'open', sym = x.vote==='yes' ? '✓' : x.vote==='no' ? '✗' : '…';
+    return `<li class="${cls}">${sym} ${escapeHtml(x.name)}${x.id===clientId?' (du)':''}</li>`;
+  }).join('');
+  box.innerHTML = `<div class="vt-head"><span>🗳 ${title}</span><span class="vt-time"></span></div>
+    <div class="vt-bar"><div></div></div>
+    <ul>${list}</ul>
+    <div class="hint">${v.paused ? 'Zeit angehalten – wartet, bis alle Nein-Stimmen auf Ja wechseln.'
+      : 'Ohne Nein-Stimme startet es nach Ablauf der Zeit automatisch.'}</div>
+    <div class="vt-btns">
+      <button data-v="yes" class="primary${mine==='yes'?' sel':''}">Ja</button>
+      <button data-v="no" class="${mine==='no'?'sel':''}">Nein</button>
+    </div>`;
+  box.querySelectorAll('button[data-v]').forEach(b => b.onclick = () => send({ type:'vote', choice: b.dataset.v }));
+  tickVote();
+  if (!voteTimer) voteTimer = setInterval(tickVote, 250);
+}
+function stopVoteTimer(){ if (voteTimer){ clearInterval(voteTimer); voteTimer=null; } }
+function tickVote(){
+  if (!voteState || !voteBox) return stopVoteTimer();
+  const ms = voteState.paused ? voteState.remainingMs : Math.max(0, voteState.localDeadline - Date.now());
+  const t = voteBox.querySelector('.vt-time'), bar = voteBox.querySelector('.vt-bar>div');
+  if (t){ t.textContent = (voteState.paused ? '⏸ ' : '') + Math.ceil(ms/1000) + ' s'; t.classList.toggle('paused', voteState.paused); }
+  if (bar) bar.style.width = (100 * ms / voteState.totalMs) + '%';
+}
 $('ov-home').onclick = () => { send({ type:'leaveRoom' }); };
 
 // ---------- Utils ----------
@@ -361,7 +397,7 @@ let voiceRoster = [];                 // aktuelle Voice-Mitglieder laut Server
 const peers = new Map();              // id -> {pc, polite, makingOffer, ignoreOffer, name, speaking}
 
 function enterRoomUI(){ setFab(true); $('voice').classList.remove('hidden'); }
-function exitRoomUI(){ setFab(false); $('voice').classList.add('hidden'); voiceLeave(true); }
+function exitRoomUI(){ renderVote('lobby-vote', null); setFab(false); $('voice').classList.add('hidden'); voiceLeave(true); }
 
 async function voiceJoin(){
   if (voiceJoined) return;

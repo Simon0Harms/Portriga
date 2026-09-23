@@ -112,6 +112,18 @@ button.link{background:none;border:none;color:var(--accent);padding:.3em;text-de
 .scoreboard .delta.pos{color:var(--accent)}
 .scoreboard .delta.neg{color:var(--danger)}
 
+/* --- Abstimmung (Issue #9) --- */
+.vote{margin:.8em 0;padding:.7em .8em;border-radius:10px;background:rgba(255,255,255,.06);text-align:left}
+.vote .vt-head{display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-bottom:.4em}
+.vote .vt-time{font-variant-numeric:tabular-nums;color:var(--gold)}
+.vote .vt-time.paused{color:var(--danger)}
+.vote .vt-bar{height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden;margin-bottom:.5em}
+.vote .vt-bar>div{height:100%;background:var(--gold);transition:width .25s linear}
+.vote ul{list-style:none;padding:0;margin:.3em 0;display:flex;flex-wrap:wrap;gap:.3em .8em;font-size:.9rem}
+.vote li.yes{color:var(--accent)} .vote li.no{color:var(--danger)} .vote li.open{opacity:.7}
+.vote .vt-btns{display:flex;gap:.5em;margin-top:.5em}
+.vote .vt-btns button{flex:1}
+.vote .vt-btns button.sel{outline:2px solid var(--gold)}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#222;color:#fff;
   padding:.7em 1.1em;border-radius:10px;z-index:30;box-shadow:0 6px 20px rgba(0,0,0,.5);border:1px solid #444}
 
