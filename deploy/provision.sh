@@ -3,6 +3,7 @@
 # Installiert Node, richtet Dienst + optional nginx ein.
 # Erwartet die App unter /opt/portriga (vorher hineinkopieren oder GIT_URL setzen).
 #   WANT_NGINX=1      -> nginx als Reverse-Proxy auf Port 80 (mit WebSocket-Upgrade)
+#   WANT_COTURN=1     -> coturn (TURN-Server für Voice), Config in /opt/portriga/turnserver.conf
 #   GIT_URL=...       -> falls App noch nicht vorhanden, von dort klonen
 #   USE_NODESOURCE=1  -> Node via NodeSource (neuere LTS) statt Debian-Paket
 #   NODE_MAJOR=22     -> NodeSource-Major (nur mit USE_NODESOURCE=1)
@@ -57,6 +58,11 @@ echo "Node $(node -v), npm $(npm -v)"
 echo ">> Dienstbenutzer anlegen…"
 id "$SVC_USER" &>/dev/null || useradd --system --home "$APP_DIR" --shell /usr/sbin/nologin "$SVC_USER"
 
+echo ">> Konfigurationsdateien in $APP_DIR sicherstellen…"
+# Reale Configs nur anlegen, wenn sie fehlen – Updates überschreiben sie dann nicht.
+[ -f "$APP_DIR/config.json" ]  || cp "$APP_DIR/config.example.json" "$APP_DIR/config.json"
+[ -f "$APP_DIR/portriga.env" ] || cp "$APP_DIR/deploy/portriga.env.example" "$APP_DIR/portriga.env"
+
 echo ">> Abhängigkeiten installieren…"
 cd "$APP_DIR"
 npm ci --omit=dev 2>/dev/null || npm install --omit=dev
@@ -70,12 +76,26 @@ sleep 1
 systemctl --no-pager --full status portriga | head -n 6 || true
 
 if [ "$WANT_NGINX" = "1" ]; then
-  echo ">> nginx-Reverse-Proxy einrichten…"
+  echo ">> nginx-Reverse-Proxy einrichten (Config aus $APP_DIR)…"
   apt-get install -y nginx
-  install -m 0644 "$APP_DIR/deploy/nginx-portriga.conf" /etc/nginx/sites-available/portriga
-  ln -sf /etc/nginx/sites-available/portriga /etc/nginx/sites-enabled/portriga
+  # aktive Config als Symlink auf die Datei in /opt/portriga -> dort liegt die Wahrheit
+  ln -sf "$APP_DIR/deploy/nginx-portriga.conf" /etc/nginx/sites-enabled/portriga
   rm -f /etc/nginx/sites-enabled/default
   nginx -t && systemctl restart nginx
+fi
+
+if [ "$WANT_COTURN" = "1" ]; then
+  echo ">> coturn (TURN-Server) einrichten (Config aus $APP_DIR)…"
+  apt-get install -y coturn
+  [ -f "$APP_DIR/turnserver.conf" ] || cp "$APP_DIR/deploy/coturn-example.conf" "$APP_DIR/turnserver.conf"
+  ln -sf "$APP_DIR/turnserver.conf" /etc/turnserver.conf
+  # coturn-Dienst aktivieren
+  if [ -f /etc/default/coturn ]; then
+    grep -q '^TURNSERVER_ENABLED=1' /etc/default/coturn || \
+      { sed -i 's/^#\?TURNSERVER_ENABLED=.*/TURNSERVER_ENABLED=1/' /etc/default/coturn || echo 'TURNSERVER_ENABLED=1' >> /etc/default/coturn; }
+  fi
+  echo "   Hinweis: $APP_DIR/turnserver.conf (user/realm/Zertifikate) anpassen, dann: systemctl enable --now coturn"
+  echo "   Und in $APP_DIR/config.json bzw. portriga.env die TURN-Zugangsdaten setzen."
 fi
 
 IP="$(ip -4 addr show eth0 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1)"

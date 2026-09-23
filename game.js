@@ -19,8 +19,17 @@ const SUITS = [
 ];
 
 // Wertigkeit hoch -> niedrig, exakt wie auf der Regelseite abgebildet.
-// ANNAHME (siehe oben). Zum Ändern einfach umsortieren.
-const RANKS = ['A', '7', 'K', 'D', 'B', '10', '9', '8'];
+// ANNAHME (siehe oben). Zur Laufzeit über config.json (game.ranks) / setRanks() änderbar.
+let RANKS = ['A', '7', 'K', 'D', 'B', '10', '9', '8'];
+
+// Überschreibt die Kartenwertigkeit prozessweit (z.B. aus config.json).
+// Es müssen genau 8 eindeutige Rang-Bezeichner sein, sonst stimmt die Deckgröße (8*4*2=64) nicht.
+function setRanks(arr) {
+  if (!Array.isArray(arr) || arr.length !== 8 || new Set(arr).size !== 8) {
+    throw new Error('ranks muss genau 8 eindeutige Werte enthalten.');
+  }
+  RANKS = arr.map(String);
+}
 
 function rankStrength(rank) {
   // vorne = stark. A -> RANKS.length, ... letzter -> 1
@@ -300,4 +309,4 @@ function sortHand(a, b) {
   return rankStrength(b.rank) - rankStrength(a.rank);
 }
 
-module.exports = { Game, buildDeck, buildRoundPlan, trickScore, rankStrength, SUITS, RANKS };
+module.exports = { Game, buildDeck, buildRoundPlan, trickScore, rankStrength, setRanks, SUITS, RANKS };

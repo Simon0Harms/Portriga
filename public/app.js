@@ -15,27 +15,62 @@ let ws, wsReady = false, lastState = null, myId = clientId, hostId = null;
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}`);
-  ws.onopen = () => { wsReady = true; sendRaw({ type:'hello', clientId, name: myName || 'Spieler' }); };
-  ws.onclose = () => { wsReady = false; toast('Verbindung getrennt – neu verbinden…'); setTimeout(connect, 1500); };
+  // Basis-Pfad wird vom Server in die Seite injiziert (window.__BASE__),
+  // damit der WebSocket auch im Subdirectory-Betrieb (/portriga) korrekt verbindet.
+  const base = (typeof window.__BASE__ === 'string') ? window.__BASE__ : '';
+  const url = `${proto}://${location.host}${base}/`;
+  console.log('[Portriga] WebSocket verbinde:', url);
+  ws = new WebSocket(url);
+  ws.onopen = () => {
+    wsReady = true;
+    console.log('[Portriga] WebSocket verbunden');
+    sendRaw({ type:'hello', clientId, name: myName || 'Spieler' });
+    flushOutbox();               // gepufferte Aktionen jetzt senden
+  };
+  ws.onerror = (e) => { console.error('[Portriga] WebSocket-Fehler', e); };
+  ws.onclose = (e) => {
+    wsReady = false;
+    console.warn('[Portriga] WebSocket geschlossen', e && e.code, e && e.reason);
+    setTimeout(connect, 1200);
+  };
   ws.onmessage = ev => onMessage(JSON.parse(ev.data));
 }
 function sendRaw(m){ if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
-function send(m){ sendRaw(m); }
+// Aktionen, die vor dem Verbindungsaufbau ausgelöst werden, puffern statt verwerfen.
+let outbox = [];
+function flushOutbox(){
+  const pending = outbox; outbox = [];
+  for (const m of pending) sendRaw(m);
+}
+function send(m){
+  if (ws && ws.readyState === 1){ sendRaw(m); return; }
+  // Verbindung noch nicht offen -> puffern. Lobby-Aktionen nicht doppeln.
+  if (m.type === 'createRoom' || m.type === 'joinRoom'){
+    outbox = outbox.filter(x => x.type !== 'createRoom' && x.type !== 'joinRoom');
+  }
+  outbox.push(m);
+  toast('Verbinde… die Aktion wird gleich ausgeführt.');
+}
 
 function onMessage(m){
   switch(m.type){
     case 'ready': break;
     case 'joined':
-      hostId = null; show('lobby'); break;
+      hostId = null; enterRoomUI(); show('lobby'); break;
     case 'state':
       if (m.hostId) hostId = m.hostId;
+      enterRoomUI();
       if (m.lobby) renderLobby(m); else { lastState = m; renderGame(m); }
       break;
+    case 'rtcConfig': if (m.iceServers) rtcConfig = { iceServers: m.iceServers }; break;
+    case 'voice': onVoiceMembers(m.members || []); break;
+    case 'rtc-signal': onSignal(m.from, m.data); break;
+    case 'chatHistory': renderChatHistory(m.messages || []); break;
+    case 'chat': addChatMsg(m.msg); break;
     case 'toast': toast(m.message); break;
     case 'error': toast('⚠ ' + m.message); break;
-    case 'roomClosed': toast(m.reason || 'Raum geschlossen'); show('home'); break;
-    case 'left': show('home'); break;
+    case 'roomClosed': toast(m.reason || 'Raum geschlossen'); exitRoomUI(); leaveChatUI(); show('home'); break;
+    case 'left': exitRoomUI(); leaveChatUI(); show('home'); break;
   }
 }
 
@@ -194,5 +229,260 @@ function toast(msg){
   clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.add('hidden'),2600);
 }
 function escapeHtml(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ---------- Chat ----------
+let chatOpen = false, unread = 0;
+function setFab(visible){
+  $('chat-fab').classList.toggle('hidden', !visible || chatOpen);
+  if (!visible){ $('chat').classList.add('hidden'); chatOpen = false; }
+}
+function openChat(){
+  chatOpen = true; unread = 0;
+  $('chat').classList.remove('hidden');
+  $('chat-fab').classList.add('hidden');
+  updateBadge();
+  const log = $('chat-log'); log.scrollTop = log.scrollHeight;
+  $('chat-text').focus();
+}
+function closeChat(){
+  chatOpen = false;
+  $('chat').classList.add('hidden');
+  $('chat-fab').classList.remove('hidden');
+}
+function updateBadge(){
+  const b = $('chat-badge');
+  if (unread>0 && !chatOpen){ b.textContent = unread>99?'99+':unread; b.classList.remove('hidden'); }
+  else b.classList.add('hidden');
+}
+function fmtTime(ts){ const d=new Date(ts||Date.now()); return d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}); }
+function msgEl(msg){
+  const el=document.createElement('div');
+  if (msg.system){ el.className='cm sys'; el.textContent=msg.text; return el; }
+  el.className='cm' + (msg.name===myName?' me':'');
+  const nm=document.createElement('span'); nm.className='nm'; nm.textContent=msg.name+': ';
+  const tx=document.createElement('span'); tx.textContent=msg.text;
+  const tm=document.createElement('span'); tm.className='tm'; tm.textContent=fmtTime(msg.ts);
+  el.appendChild(nm); el.appendChild(tx); el.appendChild(tm);
+  return el;
+}
+function addChatMsg(msg){
+  const log=$('chat-log');
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  log.appendChild(msgEl(msg));
+  if (atBottom || chatOpen) log.scrollTop = log.scrollHeight;
+  if (!chatOpen && !msg.system){ unread++; updateBadge(); }
+}
+function renderChatHistory(list){
+  const log=$('chat-log'); log.innerHTML='';
+  list.forEach(m=>log.appendChild(msgEl(m)));
+  log.scrollTop = log.scrollHeight;
+}
+function leaveChatUI(){
+  $('chat-log').innerHTML=''; unread=0; updateBadge(); setFab(false);
+}
+function sendChat(){
+  const inp=$('chat-text'); const text=inp.value.trim();
+  if (!text) return;
+  send({ type:'chat', text });
+  inp.value=''; inp.focus();
+}
+$('chat-fab').onclick = openChat;
+$('chat-close').onclick = closeChat;
+$('chat-send').onclick = sendChat;
+$('chat-text').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); sendChat(); } });
+
+// ---------- Voice (WebRTC-Mesh, Perfect Negotiation) ----------
+let rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+let voiceJoined = false, localStream = null, muted = false, localSpeaking = false;
+let voiceRoster = [];                 // aktuelle Voice-Mitglieder laut Server
+const peers = new Map();              // id -> {pc, polite, makingOffer, ignoreOffer, name, speaking}
+
+function enterRoomUI(){ setFab(true); $('voice').classList.remove('hidden'); }
+function exitRoomUI(){ setFab(false); $('voice').classList.add('hidden'); voiceLeave(true); }
+
+async function voiceJoin(){
+  if (voiceJoined) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    return toast('Mikrofon nicht verfügbar (HTTPS nötig).');
+  }
+  try{
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  }catch(e){
+    return toast('Mikrofonzugriff verweigert oder kein HTTPS.');
+  }
+  voiceJoined = true; muted = false;
+  try{ ensureCtx().resume(); }catch(e){}
+  setupMeter('me', localStream);
+  $('voice-join').classList.add('hidden');
+  $('voice-active').classList.remove('hidden');
+  $('voice-mute').classList.remove('on'); $('voice-mute').textContent = '🔇 Stumm';
+  send({ type:'voice-join' });
+  renderVoiceList();
+}
+
+function voiceLeave(silent){
+  if (voiceJoined && !silent) send({ type:'voice-leave' });
+  for (const id of [...peers.keys()]) closePeer(id);
+  peers.clear();
+  if (localStream){ localStream.getTracks().forEach(t=>t.stop()); localStream=null; }
+  removeMeter('me');
+  voiceJoined = false; localSpeaking = false;
+  $('voice-active') && $('voice-active').classList.add('hidden');
+  $('voice-join') && $('voice-join').classList.remove('hidden');
+  renderVoiceList();
+}
+
+function onVoiceMembers(members){
+  voiceRoster = members;
+  const others = voiceRoster.filter(m=>m.id!==clientId);
+  $('voice-join').textContent = others.length ? `🎤 Voice beitreten (${others.length} aktiv)` : '🎤 Voice beitreten';
+  if (voiceJoined){
+    const ids = new Set(voiceRoster.map(m=>m.id));
+    for (const id of [...peers.keys()]) if (!ids.has(id)) closePeer(id);
+    for (const m of voiceRoster){
+      if (m.id===clientId) continue;
+      if (!peers.has(m.id)) createPeer(m.id, m.name);
+      else peers.get(m.id).name = m.name;
+    }
+  }
+  renderVoiceList();
+}
+
+function createPeer(id, name){
+  const pc = new RTCPeerConnection(rtcConfig);
+  const p = { pc, polite: clientId > id, makingOffer:false, ignoreOffer:false, name, speaking:false };
+  peers.set(id, p);
+  for (const track of localStream.getTracks()) pc.addTrack(track, localStream);
+  pc.onicecandidate = ({candidate}) => { if (candidate) send({ type:'rtc-signal', to:id, data:{ candidate } }); };
+  pc.ontrack = (ev) => attachRemote(id, ev.streams[0]);
+  pc.onnegotiationneeded = async () => {
+    try{
+      p.makingOffer = true;
+      await pc.setLocalDescription();
+      send({ type:'rtc-signal', to:id, data:{ description: pc.localDescription } });
+    }catch(e){ console.error(e); }
+    finally{ p.makingOffer = false; }
+  };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'failed'){ try{ pc.restartIce && pc.restartIce(); }catch(e){} }
+    renderVoiceList();
+  };
+  return p;
+}
+
+async function onSignal(from, data){
+  if (!data) return;
+  let p = peers.get(from);
+  if (!p){
+    if (!voiceJoined || !localStream) return; // wir sind nicht im Voice
+    p = createPeer(from, (voiceRoster.find(m=>m.id===from)||{}).name || 'Spieler');
+  }
+  const pc = p.pc;
+  try{
+    if (data.description){
+      const collision = data.description.type==='offer' && (p.makingOffer || pc.signalingState!=='stable');
+      p.ignoreOffer = !p.polite && collision;
+      if (p.ignoreOffer) return;
+      await pc.setRemoteDescription(data.description);
+      if (data.description.type==='offer'){
+        await pc.setLocalDescription();
+        send({ type:'rtc-signal', to:from, data:{ description: pc.localDescription } });
+      }
+    } else if (data.candidate){
+      try{ await pc.addIceCandidate(data.candidate); }
+      catch(e){ if (!p.ignoreOffer) console.error(e); }
+    }
+  }catch(e){ console.error('rtc-signal', e); }
+}
+
+function attachRemote(id, stream){
+  let el = document.getElementById('audio-'+id);
+  if (!el){ el=document.createElement('audio'); el.id='audio-'+id; el.autoplay=true; el.setAttribute('playsinline',''); $('remote-audio').appendChild(el); }
+  el.srcObject = stream;
+  setupMeter(id, stream);
+}
+
+function closePeer(id){
+  const p = peers.get(id);
+  if (p){ try{ p.pc.close(); }catch(e){} peers.delete(id); }
+  removeMeter(id);
+  const el = document.getElementById('audio-'+id);
+  if (el){ el.srcObject=null; el.remove(); }
+}
+
+function toggleMute(){
+  if (!localStream) return;
+  muted = !muted;
+  localStream.getAudioTracks().forEach(t=>t.enabled = !muted);
+  const b = $('voice-mute');
+  b.classList.toggle('on', muted);
+  b.textContent = muted ? '🔈 Laut' : '🔇 Stumm';
+  renderVoiceList();
+}
+
+// --- Sprech-Anzeige (WebAudio) ---
+let audioCtx=null; const meters=new Map(); let meterRAF=null;
+function ensureCtx(){ if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); return audioCtx; }
+function setupMeter(id, stream){
+  try{
+    const ctx=ensureCtx();
+    const src=ctx.createMediaStreamSource(stream);
+    const an=ctx.createAnalyser(); an.fftSize=512;
+    src.connect(an);
+    meters.set(id, { an, data:new Uint8Array(an.fftSize), src });
+    startMeterLoop();
+  }catch(e){}
+}
+function removeMeter(id){ const m=meters.get(id); if(m){ try{m.src.disconnect();}catch(e){} meters.delete(id); } }
+function startMeterLoop(){
+  if (meterRAF) return;
+  const tick=()=>{
+    for (const [id,m] of meters){
+      m.an.getByteTimeDomainData(m.data);
+      let sum=0; for (let i=0;i<m.data.length;i++){ const v=(m.data[i]-128)/128; sum+=v*v; }
+      const rms=Math.sqrt(sum/m.data.length);
+      const speaking = rms>0.045;
+      if (id==='me'){ if(muted){ localSpeaking=false; } else localSpeaking=speaking; }
+      else { const p=peers.get(id); if(p) p.speaking=speaking; }
+    }
+    updateSpeakingDom();
+    meterRAF = meters.size ? requestAnimationFrame(tick) : null;
+  };
+  meterRAF = requestAnimationFrame(tick);
+}
+function updateSpeakingDom(){
+  const meRow=document.getElementById('vrow-me');
+  if (meRow) meRow.classList.toggle('speaking', localSpeaking);
+  for (const [id,p] of peers){
+    const r=document.getElementById('vrow-'+id);
+    if (r) r.classList.toggle('speaking', !!p.speaking);
+  }
+}
+
+function stateLabel(s){
+  return ({connected:'verbunden', connecting:'verbinde…', new:'verbinde…', checking:'verbinde…',
+    disconnected:'getrennt', failed:'fehlgeschlagen', closed:'zu'}[s] || s || '');
+}
+function voiceRow(rowId, name, isMuted, speaking, right){
+  const el=document.createElement('div');
+  el.id='vrow-'+rowId;
+  el.className='vc'+(speaking?' speaking':'')+(isMuted?' muted':'');
+  el.innerHTML=`<span class="ring"></span><span class="nm">${escapeHtml(name)}</span><span class="st">${escapeHtml(right||'')}</span>`;
+  return el;
+}
+function renderVoiceList(){
+  const box=$('voice-list'); if(!box) return; box.innerHTML='';
+  if (voiceJoined) box.appendChild(voiceRow('me', 'Du', muted, localSpeaking, muted?'stumm':''));
+  for (const m of voiceRoster){
+    if (m.id===clientId) continue;
+    const p=peers.get(m.id);
+    box.appendChild(voiceRow(m.id, m.name, false, p?p.speaking:false, p?stateLabel(p.pc.connectionState):'…'));
+  }
+}
+
+$('voice-join').onclick = voiceJoin;
+$('voice-leave').onclick = () => voiceLeave(false);
+$('voice-mute').onclick = toggleMute;
+window.addEventListener('beforeunload', () => { if(voiceJoined) voiceLeave(false); });
 
 connect();

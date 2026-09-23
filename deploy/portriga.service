@@ -9,6 +9,8 @@ User=portriga
 WorkingDirectory=/opt/portriga
 Environment=NODE_ENV=production
 Environment=PORT=3000
+# Optionale Umgebungsdatei (STUN/TURN für Voice) – '-' = fehlt-egal:
+EnvironmentFile=-/opt/portriga/portriga.env
 ExecStart=/usr/bin/node server.js
 Restart=on-failure
 RestartSec=3

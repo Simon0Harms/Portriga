@@ -4,6 +4,11 @@ Server-autoritatives Mehrspieler-Kartenspiel (Stichvorhersage) nach den Regeln v
 <http://portriga.bplaced.net/>. Node.js + WebSockets, ohne Datenbank.
 Deployment als Proxmox-Debian-LXC.
 
+Enthält einen **Raum-Chat** (in Lobby und Spiel nutzbar): ein-/ausklappbares Panel mit
+Verlauf (bleibt bei Reconnect erhalten), Ungelesen-Zähler und dezenten System-Meldungen
+(Beitritt, Spielstart). Der Verlauf liegt nur im RAM und ist auf die letzten 60 Nachrichten begrenzt.
+Zusätzlich gibt es einen **Voice-Chat** als WebRTC-Mesh (Details unten).
+
 ## Umgesetzte Regeln
 - 2 Skatblätter = 64 Karten (jede Karte doppelt), 2–7 Spieler.
 - Rundenfolge der Kartenanzahl pro Spieler: **1→7 aufsteigend, dann 8 genau *N*-mal (N = Spieleranzahl), dann 7→1 absteigend.** Geber wandert pro Runde im Uhrzeigersinn.
@@ -23,12 +28,13 @@ Nicht implementiert (bewusst, weil in den Regeln nicht gefordert): eine „Summe
 
 ## Projektstruktur
 ```
+config.json         zentrale Konfiguration (aus config.example.json)
 game.js            Regel-Engine (rein, testbar)
 bots.js            simpler Platzhalter-Bot
 server.js          Express + WebSocket, Räume, Bot-Steuerung, Reconnect
 public/            Frontend (index.html, style.css, app.js)
 test/simulate.js   kopflose Vollspiel-Simulation (npm test)
-deploy/            Proxmox-LXC + systemd + nginx
+deploy/            Proxmox-LXC + systemd + nginx + coturn/ENV (Voice)
 ```
 
 ## Lokal starten
@@ -38,6 +44,37 @@ npm start           # http://localhost:3000
 npm test            # 1200 simulierte Vollspiele (Regel-/Absturztest)
 ```
 Zum Alleine-Testen: Raum erstellen → „+ Bot" ein-/zweimal → „Spiel starten".
+
+## Konfiguration (zentral in /opt/portriga)
+
+Alle Laufzeit-Einstellungen liegen in **`/opt/portriga/config.json`**. Reihenfolge der
+Priorität: eingebaute Defaults < `config.json` < Umgebungsvariablen (`portriga.env`).
+
+```jsonc
+{
+  "port": 3000,
+  "ice": {                       // WebRTC-Voice
+    "stun": "stun:stun.l.google.com:19302",
+    "turn": null                 // oder: { "url":"turn:deine-domain.de:3478", "user":"portriga", "pass":"…" }
+  },
+  "chat": { "historyMax": 60, "textMax": 300 },
+  "bots": { "moveDelayMs": 700 },   // Zug-Tempo der Bots (ms)
+  "game": { "ranks": ["A","7","K","D","B","10","9","8"] }  // Kartenwertigkeit hoch->niedrig (genau 8, eindeutig)
+}
+```
+Die **Kartenwertigkeit** (die geflaggte Annahme von der Regelseite) lässt sich hier ohne
+Code-Änderung umsortieren. `portriga.env` bleibt für Secrets sinnvoll (z. B. `TURN_PASS`),
+da ENV Vorrang hat.
+
+Damit liegt die „Wahrheit" komplett in `/opt/portriga`:
+- `config.json` – App-Konfiguration (aus `config.example.json` erzeugt, per Update nicht überschrieben)
+- `portriga.env` – Umgebungsvariablen/Secrets (aus `deploy/portriga.env.example`)
+- `turnserver.conf` – coturn-Konfig (aus `deploy/coturn-example.conf`); `/etc/turnserver.conf` ist ein Symlink hierauf
+- nginx: `/etc/nginx/sites-enabled/portriga` ist ein Symlink auf `deploy/nginx-portriga.conf`
+
+Nach Änderungen an `config.json`/`portriga.env`: `systemctl restart portriga`.
+`config.json`, `portriga.env` und `turnserver.conf` sind in `.gitignore` – ein `git pull`
+überschreibt deine echten Werte nicht; die Vorlagen (`*.example.*`) werden aktualisiert.
 
 ## Sicherheit / Anti-Cheat
 Die komplette Spiellogik liegt **serverseitig**. Jeder Client bekommt nur eine redigierte Sicht
@@ -102,6 +139,44 @@ Aktualisieren: neue Dateien nach `/opt/portriga` bringen, dann
 ### HTTPS
 Der State liegt nur im RAM – ein Neustart beendet laufende Spiele. Für öffentlichen Betrieb
 `nginx-portriga.conf` um ein Zertifikat erweitern (certbot/ACME) und `listen 443 ssl;` ergänzen.
+
+## Voice-Chat (WebRTC-Mesh)
+
+Sprach-Chat läuft als **WebRTC-Mesh** (jeder mit jedem), passend für 2–7 Spieler. Der
+vorhandene WebSocket-Server dient nur als **Signaling** (SDP/ICE werden an genau einen
+Mitspieler im selben Raum weitergereicht; der Absender wird serverseitig gesetzt und ist
+nicht fälschbar). Audio fließt direkt zwischen den Browsern, nicht über den Server.
+Verbindungsaufbau nach dem *Perfect-Negotiation*-Muster; Mute und eine einfache
+Sprech-Anzeige (WebAudio) sind eingebaut.
+
+**Zwei harte Voraussetzungen:**
+1. **HTTPS ist Pflicht.** `getUserMedia` (Mikrofon) funktioniert nur im sicheren Kontext
+   (Ausnahme: `http://localhost` beim lokalen Test). Für den Betrieb also nginx mit
+   Zertifikat (siehe HTTPS-Hinweis oben).
+2. **TURN-Server (coturn) für zuverlässige Verbindungen.** Reines STUN scheitert, sobald
+   jemand hinter symmetrischem NAT/CGNAT sitzt.
+
+**coturn einrichten (im selben oder einem eigenen LXC):**
+```bash
+apt-get install -y coturn
+# TURNSERVER_ENABLED=1 in /etc/default/coturn setzen
+cp /opt/portriga/deploy/coturn-example.conf /etc/turnserver.conf   # dann Werte anpassen
+systemctl enable --now coturn
+```
+Anschließend dem Node-Dienst die ICE-Daten geben – `deploy/portriga.env.example` nach
+`/opt/portriga/portriga.env` kopieren, `TURN_URL/TURN_USER/TURN_PASS` setzen (müssen mit
+`user=`/`realm=` in `turnserver.conf` übereinstimmen), dann `systemctl restart portriga`.
+Der Server liefert die ICE-Konfiguration automatisch an die Clients.
+
+**Freizugebende Ports (Firewall/LXC/Router):** `3478/udp`+`3478/tcp` (TURN/STUN),
+optional `5349/tcp` (TURN über TLS), sowie der Medien-Relay-Bereich `49152-65535/udp`.
+
+**Grenzen (bewusst):** Mesh skaliert nur für kleine Runden – bei 7 Teilnehmern hält jeder
+~6 Audioverbindungen (überschlägig 150–250 kbit/s je Richtung). Bots nehmen nicht teil.
+Bricht die WebSocket-Verbindung ab, endet Voice und muss neu beigetreten werden. Eine
+Fern-Stumm-Anzeige (ob andere sich stummgeschaltet haben) gibt es nicht, nur die eigene.
+Getestet ist bisher die Signalisierung automatisiert; die Medien-/Mikrofon-Ebene muss mit
+zwei echten Browsern über HTTPS geprüft werden.
 
 ## Lizenz
 GPL-3.0-or-later.

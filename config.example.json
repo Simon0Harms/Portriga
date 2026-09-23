@@ -1,0 +1,27 @@
+{
+  "port": 3000,
+  "basePath": "",
+  "ice": {
+    "stun": "stun:stun.l.google.com:19302",
+    "turn": null
+  },
+  "chat": {
+    "historyMax": 60,
+    "textMax": 300
+  },
+  "bots": {
+    "moveDelayMs": 700
+  },
+  "game": {
+    "ranks": [
+      "A",
+      "7",
+      "K",
+      "D",
+      "B",
+      "10",
+      "9",
+      "8"
+    ]
+  }
+}
