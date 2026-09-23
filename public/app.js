@@ -524,4 +524,31 @@ $('voice-leave').onclick = () => voiceLeave(false);
 $('voice-mute').onclick = toggleMute;
 window.addEventListener('beforeunload', () => { if(voiceJoined) voiceLeave(false); });
 
+// ---------- Vollbild (Issue #3) ----------
+// Fullscreen-API inkl. WebKit-Präfix; auf iPhone-Safari nicht verfügbar → Button bleibt versteckt
+// (dort hilft „Zum Home-Bildschirm“, siehe manifest.webmanifest / apple-mobile-web-app-capable).
+const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+const fsSupported = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+function toggleFullscreen(){
+  const de = document.documentElement;
+  try {
+    if (fsEl()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    else {
+      const r = (de.requestFullscreen || de.webkitRequestFullscreen).call(de, { navigationUI:'hide' });
+      if (r && r.catch) r.catch(() => toast('Vollbild wird von diesem Browser nicht erlaubt.'));
+    }
+  } catch (e) { toast('Vollbild wird von diesem Browser nicht unterstützt.'); }
+}
+function updateFsBtn(){
+  const b = $('btn-fullscreen');
+  b.classList.toggle('on', !!fsEl());
+  b.title = fsEl() ? 'Vollbild beenden' : 'Vollbild';
+}
+if (fsSupported) {
+  $('btn-fullscreen').classList.remove('hidden');
+  $('btn-fullscreen').onclick = toggleFullscreen;
+  document.addEventListener('fullscreenchange', updateFsBtn);
+  document.addEventListener('webkitfullscreenchange', updateFsBtn);
+}
+
 connect();

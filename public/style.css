@@ -9,7 +9,7 @@ body{
   color:#eef; background:radial-gradient(1200px 800px at 50% 30%,var(--felt),var(--felt2));
   min-height:100%;
 }
-.screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+.screen{min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:16px}
 .hidden{display:none !important}
 
 .panel{
@@ -183,3 +183,55 @@ button.link{background:none;border:none;color:var(--accent);padding:.3em;text-de
 @media (max-width:899px){
   #last-trick-side{display:none !important}
 }
+
+/* --- Tablet-Layout: Spieltisch passt ohne Scrollen in den Viewport (Issue #3) --- */
+#screen-game{height:100vh;height:100dvh;min-height:0;overflow:hidden}
+#table-wrap{min-height:0;overflow:hidden}
+#table{min-height:0;overflow-y:auto}
+#bidding,#myhand-wrap{flex:none}
+/* Platz für die fixen Voice-/Chat-Buttons unten, damit sie die Hand nicht verdecken */
+#myhand-wrap{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+
+/* Niedrige Viewports (Tablets quer/hoch, kleine Laptops): kompakter */
+@media (max-height:900px){
+  #game-header{padding:6px;gap:10px;font-size:.85rem}
+  #table{gap:6px;padding:8px 6px}
+  .opp{padding:5px 8px;min-width:100px}
+  .opp .cards{margin-top:3px}
+  .mini-card{width:12px;height:18px}
+  #trick-area{min-height:96px;gap:4px}
+  #trick-cards{padding-top:14px}
+  #bidding{padding:4px}
+  #bidding p{margin:.2em 0}
+  #bid-buttons button{padding:.45em .7em}
+  #myhand-wrap{padding:6px 8px}
+  #my-meta{margin-bottom:4px}
+  #myhand{gap:6px}
+  #last-trick-side{margin:8px 8px 8px 0}
+}
+@media (max-height:760px){
+  .card{width:50px;height:72px;padding:4px 5px}
+  .card .r{font-size:.95rem}
+  .card .s{font-size:1.25rem}
+  #myhand .card.playable:hover{transform:translateY(-5px)}
+  #trick-area{min-height:84px}
+  #last-trick-side .card{width:42px;height:60px}
+}
+@media (max-height:600px){
+  .card{width:42px;height:60px}
+  .card .s{font-size:1.05rem}
+  .card .r{font-size:.85rem}
+  #myhand{gap:4px}
+}
+
+/* Vollbild-Button & Safe-Area (Notch/Home-Leiste) bei viewport-fit=cover */
+.hdr-btn{padding:.25em .6em;font-size:1rem;line-height:1}
+.hdr-btn.on{background:var(--gold);color:#3a2b00;border-color:#d9b64f}
+#game-header{padding-top:calc(10px + env(safe-area-inset-top,0px));
+  padding-left:max(10px,env(safe-area-inset-left,0px));padding-right:max(10px,env(safe-area-inset-right,0px))}
+@media (max-height:900px){
+  #game-header{padding-top:calc(6px + env(safe-area-inset-top,0px))}
+}
+/* Hand nicht unter den fixen Voice- (links) / Chat-Buttons (rechts) verstecken */
+@media (min-width:880px){ #myhand-wrap{padding-left:215px;padding-right:215px} }
+@media (max-width:879px){ #myhand-wrap{padding-bottom:calc(66px + env(safe-area-inset-bottom,0px))} }

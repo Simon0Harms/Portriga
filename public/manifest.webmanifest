@@ -1,0 +1,11 @@
+{
+  "name": "Portriga",
+  "short_name": "Portriga",
+  "description": "Stichvorhersage-Kartenspiel · 2–7 Spieler",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "background_color": "#0b3d26",
+  "theme_color": "#0b3d26"
+}
