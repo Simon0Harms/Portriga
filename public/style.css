@@ -260,3 +260,16 @@ a.btn-link.hdr-btn{padding:.3em .7em;font-size:.9rem}
 .join-share{text-align:center;margin:.4em 0 .8em}
 .join-link{word-break:break-all;color:var(--gold)}
 .join-qr{display:block;margin:.5em auto 0;width:160px;height:160px;background:#fff;border-radius:6px;padding:4px}
+
+/* --- Konten --- */
+.acct-bar{margin:.2em 0 .6em;font-size:.9rem;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.acct-bar > div{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.verified{color:var(--accent);font-weight:800}
+.modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.55)}
+.modal .panel{position:relative;max-height:92dvh;overflow:auto}
+.modal-x{position:absolute;top:8px;right:10px;text-decoration:none;font-size:1.1rem}
+.reg-code-box{display:flex;align-items:center;justify-content:center;gap:10px;margin:.6em 0}
+.reg-code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:1.5rem;font-weight:800;letter-spacing:.08em;color:var(--gold);background:rgba(0,0,0,.3);padding:.25em .6em;border-radius:8px;user-select:all}
+#reg-bot{color:var(--gold);word-break:break-all}
+.msg.ok{color:#8f8}.msg.bad{color:#ff9aa8}
+.modal .row button{flex:1 1 auto}

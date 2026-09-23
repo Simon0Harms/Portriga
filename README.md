@@ -33,9 +33,11 @@ config.json         zentrale Konfiguration (aus config.example.json)
 game.js            Regel-Engine (rein, testbar)
 bots.js            simpler Platzhalter-Bot
 server.js          Express + WebSocket, Räume, Bot-Steuerung, Reconnect
+accounts.js        Benutzerkonten: Registrierung per Matrix-DM, Login, Sessions
 public/            Frontend (index.html, style.css, app.js) + regeln.html (eigenständige Regelseite)
 test/simulate.js   kopflose Vollspiel-Simulation (npm test)
 deploy/            Proxmox-LXC + systemd + nginx + coturn/ENV (Voice)
+deploy/matrix/     Matrix-Bot (Sidecar) für Registrierung und Login-Links
 ```
 
 ## Lokal starten
@@ -84,6 +86,50 @@ Nach Änderungen an `config.json`/`portriga.env`: `systemctl restart portriga`.
 Die komplette Spiellogik liegt **serverseitig**. Jeder Client bekommt nur eine redigierte Sicht
 (`game.viewFor`): die eigene Hand vollständig, von anderen nur die Kartenanzahl. Karten der
 Mitspieler verlassen den Server nie. Legalität jedes Zuges wird serverseitig geprüft.
+
+## Benutzerkonten (Registrierung per Matrix)
+
+Optional. Ohne Konfiguration bleibt alles wie bisher (nur Gäste). Mit Konto ist der Spielername
+fest an den Benutzernamen gebunden (✓ in der Lobby); Gäste können registrierte Namen nicht verwenden.
+
+**Registrierung**
+1. Benutzername wählen – die Verfügbarkeit wird live geprüft (Groß-/Kleinschreibung egal;
+   während einer laufenden Registrierung ist der Name reserviert).
+2. Optional ein Passwort (≥ 8 Zeichen) setzen.
+3. Die App zeigt einen Code (`PR-XXXX-XXXX`, 15 Min. gültig). Diesen per **Direktnachricht an den
+   Portriga-Bot** schicken. Die **Absender-MXID** wird mit dem Konto verknüpft – der Homeserver
+   authentifiziert den Absender, das ist der Nachweis, dass die MXID dem User gehört.
+4. Die App erkennt die Zustellung automatisch und meldet den User an.
+
+**Anmeldung:** Benutzername *oder* MXID + Passwort, oder **Login-Link per Matrix** (5 Min.,
+einmalig). Alternativ dem Bot `login` schreiben. Passwort lässt sich im Konto-Dialog setzen,
+ändern oder entfernen; „Auf allen Geräten abmelden“ invalidiert alle Sitzungen.
+
+**Architektur** (Spool-Prinzip wie im KKk58-Sidecar, die Node-App bleibt ohne Matrix-Abhängigkeit):
+```
+Browser ──HTTP/WS──▶ server.js + accounts.js ──▶ data/matrix-outbox/ ──▶ portriga_matrix_bot.py ──▶ Matrix
+                                              ◀── data/matrix-inbox/  ◀──  (E2EE, matrix-nio)   ◀── DM des Users
+```
+Daten: `data/accounts.json` (Konten, scrypt-Hashes), `data/secret.key` (HMAC für Sessions/Codes).
+Beides sichern; `data/` ist in `.gitignore`.
+
+**Einrichtung**
+1. Matrix-Konto für den Bot anlegen (z. B. `@portrigabot:example.org`).
+2. `WANT_MATRIX=1 ./deploy/provision.sh` (oder manuell: `apt install python3-pip libolm-dev`,
+   `pip install "matrix-nio[e2e]" --break-system-packages`, Unit aus `deploy/matrix/` installieren).
+3. `/opt/portriga/matrix/portriga-matrix.env` aus `deploy/matrix/env.example` ausfüllen.
+4. In `config.json`:
+   ```json
+   "accounts": { "botMxid": "@portrigabot:example.org", "publicUrl": "https://spiel.example.org" }
+   ```
+   `publicUrl` (inkl. Basis-Pfad) ist Pflicht für Login-Links – sie werden bewusst **nicht** aus
+   Host-Headern abgeleitet (sonst per Header-Spoofing auf fremde Domains umlenkbar).
+5. `systemctl restart portriga && systemctl enable --now portriga-matrix`
+
+Hinweise: Mit `PORTRIGA_REQUIRE_ENCRYPTION=1` (Standard) antwortet der Bot nur in
+E2E-verschlüsselten Chats; eingehende Codes werden trotzdem angenommen. Den Schlüsselspeicher
+`/opt/portriga/matrix-store` sichern – geht er verloren, muss sich der Bot neu anmelden
+(Passwort erneut in die env-Datei). Tests: `npm test` (inkl. `test/accounts.test.js`, simuliert den Bot).
 
 ## Deployment als Proxmox-Debian-13-LXC (Trixie)
 

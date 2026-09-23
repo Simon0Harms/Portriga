@@ -24,5 +24,13 @@
       "8"
     ],
     "maxPlayers": 63
+  },
+  "accounts": {
+    "botMxid": "",
+    "publicUrl": "",
+    "dataDir": "",
+    "codeTtlMin": 15,
+    "sessionDays": 30,
+    "cookieSecure": true
   }
 }

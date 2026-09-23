@@ -4,6 +4,7 @@
 # Erwartet die App unter /opt/portriga (vorher hineinkopieren oder GIT_URL setzen).
 #   WANT_NGINX=1      -> nginx als Reverse-Proxy auf Port 80 (mit WebSocket-Upgrade)
 #   WANT_COTURN=1     -> coturn (TURN-Server für Voice), Config in /opt/portriga/turnserver.conf
+#   WANT_MATRIX=1     -> Matrix-Bot für Benutzerkonten (python3 + matrix-nio[e2e]), siehe deploy/matrix/
 #   GIT_URL=...       -> falls App noch nicht vorhanden, von dort klonen
 #   USE_NODESOURCE=1  -> Node via NodeSource (neuere LTS) statt Debian-Paket
 #   NODE_MAJOR=22     -> NodeSource-Major (nur mit USE_NODESOURCE=1)
@@ -96,6 +97,20 @@ if [ "$WANT_COTURN" = "1" ]; then
   fi
   echo "   Hinweis: $APP_DIR/turnserver.conf (user/realm/Zertifikate) anpassen, dann: systemctl enable --now coturn"
   echo "   Und in $APP_DIR/config.json bzw. portriga.env die TURN-Zugangsdaten setzen."
+fi
+
+if [ "${WANT_MATRIX:-0}" = "1" ]; then
+  echo ">> Matrix-Bot für Benutzerkonten einrichten…"
+  apt-get install -y python3 python3-pip libolm-dev
+  pip install "matrix-nio[e2e]" --break-system-packages
+  install -d -m 0700 -o "$SVC_USER" -g "$SVC_USER" "$APP_DIR/data" "$APP_DIR/matrix" "$APP_DIR/matrix-store"
+  [ -f "$APP_DIR/matrix/portriga-matrix.env" ] || install -m 0600 -o "$SVC_USER" -g "$SVC_USER" \
+    "$APP_DIR/deploy/matrix/env.example" "$APP_DIR/matrix/portriga-matrix.env"
+  install -m 0644 "$APP_DIR/deploy/matrix/portriga-matrix.service" /etc/systemd/system/portriga-matrix.service
+  systemctl daemon-reload
+  systemctl enable portriga-matrix
+  echo "   Hinweis: $APP_DIR/matrix/portriga-matrix.env ausfüllen, in config.json accounts.botMxid +"
+  echo "   accounts.publicUrl setzen, dann: systemctl restart portriga && systemctl start portriga-matrix"
 fi
 
 IP="$(ip -4 addr show eth0 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1)"

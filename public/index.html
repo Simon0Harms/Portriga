@@ -23,7 +23,21 @@
     <div class="panel">
       <h1>Portriga</h1>
       <p class="sub">Stichvorhersage-Kartenspiel · 2–7 Spieler (mehr mit alternativer Variante)</p>
-      <label>Dein Name
+      <!-- Konto (nur sichtbar, wenn der Server Konten aktiviert hat) -->
+      <div id="acct-bar" class="acct-bar hidden">
+        <div id="acct-guest">
+          <span class="hint">Spiel als Gast – oder</span>
+          <button id="btn-show-login" class="link">anmelden</button>
+          <span class="hint">/</span>
+          <button id="btn-show-register" class="link">registrieren</button>
+        </div>
+        <div id="acct-user" class="hidden">
+          <span>Angemeldet als <b id="acct-name"></b> <span class="verified" title="Matrix-verifiziert">✓</span></span>
+          <button id="btn-acct-settings" class="link">Konto</button>
+          <button id="btn-logout" class="link">Abmelden</button>
+        </div>
+      </div>
+      <label id="name-label">Dein Name
         <input id="name" maxlength="20" placeholder="Spieler" />
       </label>
       <div class="row">
@@ -146,6 +160,74 @@
     <div id="chat-input-row">
       <input id="chat-text" maxlength="300" placeholder="Nachricht…" autocomplete="off" />
       <button id="chat-send" class="primary">Senden</button>
+    </div>
+  </div>
+
+  <!-- Konto-Dialog: Anmelden / Registrieren / Konto -->
+  <div id="acct-modal" class="modal hidden">
+    <div class="panel">
+      <button id="acct-close" class="link modal-x" title="Schließen" aria-label="Schließen">✕</button>
+
+      <div id="acct-login" class="hidden">
+        <h2>Anmelden</h2>
+        <label>Benutzername oder Matrix-ID
+          <input id="login-id" autocomplete="username" placeholder="name oder @name:server" />
+        </label>
+        <label>Passwort
+          <input id="login-pw" type="password" autocomplete="current-password" placeholder="(falls gesetzt)" />
+        </label>
+        <div class="row">
+          <button id="btn-login" class="primary">Anmelden</button>
+          <button id="btn-login-matrix">Login-Link per Matrix</button>
+        </div>
+        <p id="login-msg" class="msg"></p>
+        <p class="hint">Noch kein Konto? <button id="btn-to-register" class="link">Registrieren</button></p>
+      </div>
+
+      <div id="acct-register" class="hidden">
+        <h2>Registrieren</h2>
+        <div id="reg-step1">
+          <label>Benutzername
+            <input id="reg-user" maxlength="20" autocomplete="username" placeholder="3–20 Zeichen" />
+          </label>
+          <p id="reg-avail" class="msg"></p>
+          <label>Passwort <span class="hint">(optional – ohne Passwort meldest du dich per Matrix-Link an)</span>
+            <input id="reg-pw" type="password" autocomplete="new-password" placeholder="mind. 8 Zeichen" />
+          </label>
+          <label id="reg-pw2-label" class="hidden">Passwort wiederholen
+            <input id="reg-pw2" type="password" autocomplete="new-password" />
+          </label>
+          <div class="row"><button id="btn-reg-start" class="primary" disabled>Weiter</button></div>
+          <p id="reg-msg" class="msg"></p>
+        </div>
+        <div id="reg-step2" class="hidden">
+          <p>Schreibe dem Matrix-Bot eine <b>Direktnachricht</b> mit diesem Code:</p>
+          <div class="reg-code-box">
+            <span id="reg-code" class="reg-code"></span>
+            <button id="btn-copy-code" class="link">kopieren</button>
+          </div>
+          <p>Bot: <a id="reg-bot" href="#" target="_blank" rel="noopener noreferrer"></a>
+            <button id="btn-copy-bot" class="link">kopieren</button></p>
+          <p class="hint">Deine Matrix-ID (Absender der Nachricht) wird mit dem Konto verknüpft und kann zum Anmelden genutzt werden.
+            Gültig noch <b id="reg-timer"></b>.</p>
+          <p id="reg-wait" class="msg">⏳ Warte auf deine Nachricht…</p>
+          <button id="btn-reg-cancel" class="link">Abbrechen</button>
+        </div>
+      </div>
+
+      <div id="acct-settings" class="hidden">
+        <h2>Konto</h2>
+        <p>Benutzername: <b id="set-name"></b><br />Matrix-ID: <b id="set-mxid"></b></p>
+        <label id="set-cur-label">Aktuelles Passwort
+          <input id="set-cur" type="password" autocomplete="current-password" />
+        </label>
+        <label><span id="set-new-caption">Neues Passwort</span> <span class="hint">(leer = Passwort entfernen)</span>
+          <input id="set-new" type="password" autocomplete="new-password" placeholder="mind. 8 Zeichen" />
+        </label>
+        <div class="row"><button id="btn-set-pw" class="primary">Passwort speichern</button></div>
+        <p id="set-msg" class="msg"></p>
+        <button id="btn-logout-all" class="link">Auf allen Geräten abmelden</button>
+      </div>
     </div>
   </div>
 

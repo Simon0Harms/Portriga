@@ -7,6 +7,7 @@ const QRCode = require('qrcode');
 const { WebSocketServer } = require('ws');
 const { Game, setRanks, MAX_PLAYERS_LIMIT } = require('./game');
 const { botBid, botCardId } = require('./bots');
+const { createAccounts } = require('./accounts');
 
 // ---- Zentrale Konfiguration ----
 // Priorität: eingebaute Defaults < config.json (in /opt/portriga) < Umgebungsvariablen.
@@ -33,6 +34,14 @@ function loadConfig() {
       ranks: null,     // null = eingebaute Standard-Wertigkeit (siehe game.js)
       maxPlayers: 63,  // 2–63; > 7 = alternative Variante mit reduzierter Kartenanzahl
     },
+    accounts: {
+      botMxid: '',          // Matrix-Bot, dem neue User ihren Code schreiben; leer = Konten aus
+      publicUrl: '',        // öffentliche Basis-URL (inkl. basePath) – Pflicht für Login-Links
+      dataDir: '',          // leer = <App>/data
+      codeTtlMin: 15,       // Gültigkeit des Registrierungscodes
+      sessionDays: 30,      // Laufzeit der Anmeldung (Cookie)
+      cookieSecure: true,   // false nur für lokalen Test ohne HTTPS
+    },
   };
   let file = {};
   const cfgPath = path.join(__dirname, 'config.json');
@@ -47,6 +56,11 @@ function loadConfig() {
   if (process.env.PORT) cfg.port = Number(process.env.PORT);
   if (process.env.BASE_PATH !== undefined) cfg.basePath = process.env.BASE_PATH;
   if (process.env.STUN_URL) cfg.ice.stun = process.env.STUN_URL;
+  const A = cfg.accounts;
+  if (process.env.MATRIX_BOT_MXID !== undefined) A.botMxid = process.env.MATRIX_BOT_MXID;
+  if (process.env.PORTRIGA_PUBLIC_URL !== undefined) A.publicUrl = process.env.PORTRIGA_PUBLIC_URL;
+  if (process.env.PORTRIGA_DATA_DIR) A.dataDir = process.env.PORTRIGA_DATA_DIR;
+  if (process.env.COOKIE_SECURE !== undefined) A.cookieSecure = process.env.COOKIE_SECURE !== 'false' && process.env.COOKIE_SECURE !== '0';
   if (process.env.TURN_URL) {
     cfg.ice.turn = { url: process.env.TURN_URL, user: process.env.TURN_USER || '', pass: process.env.TURN_PASS || '' };
   }
@@ -85,6 +99,20 @@ try {
   INDEX_HTML = fs.readFileSync(path.join(PUB, 'index.html'), 'utf8').replace(/%%BASE%%/g, BASE);
 } catch (e) { console.error('index.html nicht lesbar:', e.message); }
 const sendIndex = (_req, res) => res.type('html').send(INDEX_HTML);
+
+// ---- Benutzerkonten (Registrierung per Matrix-DM, siehe accounts.js) ----
+const AC = CONFIG.accounts || {};
+const accounts = createAccounts({
+  dataDir: AC.dataDir || path.join(__dirname, 'data'),
+  botMxid: String(AC.botMxid || '').trim(),
+  publicUrl: String(AC.publicUrl || '').trim(),
+  codeTtlMs: Math.max(1, Number(AC.codeTtlMin) || 15) * 60 * 1000,
+  sessionTtlMs: Math.max(1, Number(AC.sessionDays) || 30) * 24 * 3600 * 1000,
+  cookieSecure: AC.cookieSecure !== false,
+  basePath: BASE,
+});
+accounts.mount(app, express, BASE);
+accounts.start();
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
@@ -275,7 +303,7 @@ function lobbyView(room) {
     lobby: true,
     code: room.code,
     hostId: room.hostId,
-    seats: room.seats.map(s => ({ id: s.id, name: s.name, bot: s.bot, connected: s.connected })),
+    seats: room.seats.map(s => ({ id: s.id, name: s.name, bot: s.bot, connected: s.connected, verified: !!s.accountId })),
     maxPlayers: MAX_PLAYERS,
     vote: voteView(room),
   };
@@ -339,8 +367,11 @@ function closeRoom(room, reason) {
   rooms.delete(room.code);
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   ws.clientId = null;
+  // Angemeldetes Konto aus dem Session-Cookie (Handshake). Nach Login/Logout baut der
+  // Client die WebSocket-Verbindung neu auf, damit der neue Zustand greift.
+  ws.account = accounts.userFromReq(req);
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
 
@@ -384,6 +415,7 @@ function handle(ws, m) {
       ws.clientId = id;
       sockets.set(id, ws);
       send(ws, { type: 'rtcConfig', iceServers: iceServers() });
+      send(ws, { type: 'account', user: accounts.publicUser(ws.account) });
       // Reconnect in laufenden Raum?
       const code = clientRoom.get(id);
       const room = code && rooms.get(code);
@@ -403,9 +435,9 @@ function handle(ws, m) {
     case 'createRoom': {
       requireId(ws);
       leaveCurrent(ws.clientId);
-      const name = cleanName(m.name);
+      const name = playerName(ws, m.name);
       const room = { code: code4(), hostId: ws.clientId,
-        seats: [{ id: ws.clientId, name, bot: false, connected: true }], game: null, chat: [] };
+        seats: [{ id: ws.clientId, name, bot: false, connected: true, accountId: ws.account ? ws.account.id : null }], game: null, chat: [] };
       rooms.set(room.code, room);
       clientRoom.set(ws.clientId, room.code);
       send(ws, { type: 'joined', code: room.code, clientId: ws.clientId, isHost: true });
@@ -425,7 +457,11 @@ function handle(ws, m) {
       let seat = seatOf(room, ws.clientId);
       let isNew = false;
       if (!seat) {
-        seat = { id: ws.clientId, name: cleanName(m.name), bot: false, connected: true };
+        const name = playerName(ws, m.name);
+        if (ws.account && room.seats.some(s => s.accountId === ws.account.id)) return err(ws, 'Du sitzt mit diesem Konto bereits in diesem Raum.');
+        // Namenskollision nur verhindern, wenn ein Konto beteiligt ist (Gäste dürfen wie bisher gleich heißen).
+        if (room.seats.some(s => !s.bot && s.name.toLowerCase() === name.toLowerCase() && (ws.account || s.accountId))) return err(ws, `Der Name „${name}“ ist in diesem Raum schon vergeben.`);
+        seat = { id: ws.clientId, name, bot: false, connected: true, accountId: ws.account ? ws.account.id : null };
         room.seats.push(seat);
         isNew = true;
       } else { seat.connected = true; }
@@ -553,6 +589,15 @@ function handle(ws, m) {
 // ---- Helfer ----
 function requireId(ws) { if (!ws.clientId) throw new Error('Kein hello gesendet.'); }
 function cleanName(n) { return (String(n || '').trim().slice(0, 20)) || 'Spieler'; }
+// Angemeldet: Kontoname ist fest. Gast: freier Name, aber keine registrierten Kontonamen.
+function playerName(ws, n) {
+  if (ws.account) return ws.account.username;
+  const name = cleanName(n);
+  if (accounts.enabled && accounts.isRegisteredName(name)) {
+    throw new Error(`„${name}“ ist ein registrierter Benutzername – bitte anmelden oder einen anderen Namen wählen.`);
+  }
+  return name;
+}
 
 function hostRoom(ws) {
   requireId(ws);

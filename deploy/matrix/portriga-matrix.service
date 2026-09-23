@@ -1,0 +1,22 @@
+[Unit]
+Description=Portriga Matrix-Bot (Registrierung + Login-Links)
+After=network-online.target portriga.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Gleicher Benutzer wie die Node-App (teilt data/matrix-inbox und data/matrix-outbox)
+User=portriga
+Group=portriga
+Environment=PORTRIGA_MATRIX_ENV_FILE=/opt/portriga/matrix/portriga-matrix.env
+ExecStart=/usr/bin/python3 /opt/portriga/deploy/matrix/portriga_matrix_bot.py
+Restart=always
+RestartSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/portriga/data /opt/portriga/matrix-store /opt/portriga/matrix
+
+[Install]
+WantedBy=multi-user.target

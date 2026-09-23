@@ -62,6 +62,7 @@ function send(m){
 function onMessage(m){
   switch(m.type){
     case 'ready': break;
+    case 'account': setAccount(m.user || null); break;
     case 'joined':
       hostId = null; enterRoomUI(); show('lobby'); break;
     case 'state':
@@ -100,7 +101,7 @@ if (/^[A-Z0-9]{4}$/.test(joinParam)) {
   if (myName) send({ type:'joinRoom', code: joinParam, name: myName });
   else { $('name').focus(); toast('Namen eingeben und „Beitreten“ drücken.'); }
 }
-function saveName(){ myName = ($('name').value.trim() || 'Spieler').slice(0,20); localStorage.setItem('portriga_name', myName); }
+function saveName(){ if (account) { myName = account.username; return; } myName = ($('name').value.trim() || 'Spieler').slice(0,20); localStorage.setItem('portriga_name', myName); }
 
 // ---------- Lobby ----------
 function renderLobby(m){
@@ -121,6 +122,7 @@ function renderLobby(m){
     const dot = document.createElement('span'); dot.className = 'dot' + (s.connected?'':' off');
     li.appendChild(dot);
     const nm = document.createElement('span'); nm.textContent = s.name + (s.id===clientId?' (du)':''); li.appendChild(nm);
+    if (s.verified){ const v=document.createElement('span'); v.className='verified'; v.title='registriertes Konto (Matrix-verifiziert)'; v.textContent='✓'; li.appendChild(v); }
     if (s.bot) { const b=document.createElement('span'); b.className='tag bot'; b.textContent='Bot'; li.appendChild(b); }
     if (s.id===m.hostId){ const h=document.createElement('span'); h.className='tag'; h.textContent='Host'; li.appendChild(h); }
     ul.appendChild(li);
@@ -612,3 +614,169 @@ if (fsSupported) {
 }
 
 connect();
+
+
+// ---------- Konten (Registrierung per Matrix-DM) ----------
+const API = ((typeof window.__BASE__ === 'string') ? window.__BASE__ : '') + '/api/account';
+let account = null, acctCfg = { enabled:false };
+let regToken = null, regExpires = 0, regPoll = null, regTick = null;
+
+async function api(pathname, body){
+  const opt = body === undefined ? {} : { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) };
+  const r = await fetch(API + pathname, Object.assign({ credentials:'same-origin' }, opt));
+  let j = {}; try { j = await r.json(); } catch(_) {}
+  if (!r.ok) { const e = new Error(j.error || ('Fehler ' + r.status)); e.status = r.status; throw e; }
+  return j;
+}
+function setMsg(id, text, cls){ const el=$(id); el.textContent = text || ''; el.className = 'msg' + (cls ? ' ' + cls : ''); }
+
+function setAccount(u){
+  account = u;
+  $('acct-guest').classList.toggle('hidden', !!u);
+  $('acct-user').classList.toggle('hidden', !u);
+  $('name-label').classList.toggle('hidden', !!u);
+  if (u){ $('acct-name').textContent = u.username; myName = u.username; }
+  else { myName = localStorage.getItem('portriga_name') || ''; $('name').value = myName; }
+}
+// Nach Login/Logout WebSocket neu aufbauen, damit der Server das Session-Cookie sieht.
+function reconnectWs(){ try { if (ws) ws.close(); } catch(_) {} }
+
+function openAcct(view){
+  $('acct-modal').classList.remove('hidden');
+  for (const v of ['login','register','settings']) $('acct-'+v).classList.toggle('hidden', v !== view);
+  if (view === 'login') { setMsg('login-msg',''); setTimeout(()=>$('login-id').focus(), 30); }
+  if (view === 'register') { if (!regToken) showRegStep(1); setTimeout(()=>$('reg-user').focus(), 30); }
+  if (view === 'settings' && account) {
+    $('set-name').textContent = account.username; $('set-mxid').textContent = account.mxid;
+    $('set-cur-label').classList.toggle('hidden', !account.hasPassword);
+    $('set-new-caption').textContent = account.hasPassword ? 'Neues Passwort' : 'Passwort setzen';
+    $('set-cur').value = ''; $('set-new').value = ''; setMsg('set-msg','');
+  }
+}
+function closeAcct(){ $('acct-modal').classList.add('hidden'); }
+$('acct-close').onclick = closeAcct;
+$('acct-modal').addEventListener('click', e => { if (e.target === $('acct-modal')) closeAcct(); });
+$('btn-show-login').onclick = () => openAcct('login');
+$('btn-show-register').onclick = () => openAcct('register');
+$('btn-to-register').onclick = () => openAcct('register');
+$('btn-acct-settings').onclick = () => openAcct('settings');
+$('btn-logout').onclick = async () => { try { await api('/logout', {}); } catch(_) {} setAccount(null); reconnectWs(); toast('Abgemeldet.'); };
+
+// --- Anmelden ---
+$('btn-login').onclick = async () => {
+  try {
+    const j = await api('/login', { login: $('login-id').value.trim(), password: $('login-pw').value });
+    $('login-pw').value = ''; setAccount(j.user); closeAcct(); reconnectWs(); toast('Willkommen, ' + j.user.username + '!');
+  } catch(e){ setMsg('login-msg', e.message, 'bad'); }
+};
+$('login-pw').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-login').click(); });
+$('btn-login-matrix').onclick = async () => {
+  const login = $('login-id').value.trim();
+  if (!login) return setMsg('login-msg', 'Benutzername oder Matrix-ID eingeben.', 'bad');
+  try { await api('/login/matrix', { login }); setMsg('login-msg', 'Falls ein Konto existiert, wurde dir ein Login-Link per Matrix geschickt.', 'ok'); }
+  catch(e){ setMsg('login-msg', e.message, 'bad'); }
+};
+
+// --- Registrieren ---
+function showRegStep(n){
+  $('reg-step1').classList.toggle('hidden', n !== 1);
+  $('reg-step2').classList.toggle('hidden', n !== 2);
+}
+let availTimer = null, availOk = false;
+function updateRegBtn(){
+  const pw = $('reg-pw').value, pw2 = $('reg-pw2').value;
+  $('reg-pw2-label').classList.toggle('hidden', !pw);
+  const pwOk = !pw || (pw.length >= 8 && pw === pw2);
+  $('btn-reg-start').disabled = !(availOk && pwOk);
+  if (pw && pw.length < 8) setMsg('reg-msg', 'Passwort: mindestens 8 Zeichen.', 'bad');
+  else if (pw && pw2 && pw !== pw2) setMsg('reg-msg', 'Passwörter stimmen nicht überein.', 'bad');
+  else setMsg('reg-msg', '');
+}
+$('reg-user').addEventListener('input', () => {
+  availOk = false; updateRegBtn();
+  clearTimeout(availTimer);
+  const u = $('reg-user').value.trim();
+  if (!u) return setMsg('reg-avail', '');
+  setMsg('reg-avail', 'Prüfe…');
+  availTimer = setTimeout(async () => {
+    try {
+      const j = await api('/register/check?u=' + encodeURIComponent(u));
+      if ($('reg-user').value.trim() !== u) return;
+      availOk = !!j.available;
+      setMsg('reg-avail', j.available ? '✓ „' + u + '“ ist frei.' : '✗ ' + j.reason, j.available ? 'ok' : 'bad');
+      updateRegBtn();
+    } catch(e){ setMsg('reg-avail', e.message, 'bad'); }
+  }, 350);
+});
+$('reg-pw').addEventListener('input', updateRegBtn);
+$('reg-pw2').addEventListener('input', updateRegBtn);
+$('btn-reg-start').onclick = async () => {
+  try {
+    const j = await api('/register/start', { username: $('reg-user').value.trim(), password: $('reg-pw').value });
+    $('reg-pw').value = ''; $('reg-pw2').value = '';
+    regToken = j.token; regExpires = j.expires;
+    $('reg-code').textContent = j.code;
+    $('reg-bot').textContent = j.botMxid; $('reg-bot').href = j.matrixTo;
+    setMsg('reg-wait', '⏳ Warte auf deine Nachricht…');
+    showRegStep(2); startRegPoll();
+  } catch(e){ setMsg('reg-msg', e.message, 'bad'); if (e.status === 409) { availOk = false; updateRegBtn(); } }
+};
+function copyText(t){ (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(()=>toast('Kopiert.'), ()=>toast(t)); }
+$('btn-copy-code').onclick = () => copyText($('reg-code').textContent);
+$('btn-copy-bot').onclick = () => copyText($('reg-bot').textContent);
+function stopRegPoll(){ clearInterval(regPoll); clearInterval(regTick); regPoll = regTick = null; }
+function resetReg(){ stopRegPoll(); regToken = null; showRegStep(1); $('reg-user').value=''; setMsg('reg-avail',''); availOk=false; updateRegBtn(); }
+function startRegPoll(){
+  stopRegPoll();
+  const tick = () => {
+    const s = Math.max(0, Math.round((regExpires - Date.now()) / 1000));
+    $('reg-timer').textContent = Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+  };
+  tick(); regTick = setInterval(tick, 1000);
+  regPoll = setInterval(async () => {
+    if (!regToken) return stopRegPoll();
+    try {
+      const j = await api('/register/status?token=' + encodeURIComponent(regToken));
+      if (j.status === 'done') {
+        resetReg(); setAccount(j.user); closeAcct(); reconnectWs();
+        toast('Konto „' + j.user.username + '“ angelegt – du bist angemeldet.');
+      } else if (j.status === 'failed') { stopRegPoll(); regToken = null; setMsg('reg-wait', '✗ ' + j.error, 'bad'); }
+      else if (j.status === 'expired') { stopRegPoll(); regToken = null; setMsg('reg-wait', '✗ Code abgelaufen – bitte neu starten.', 'bad'); }
+    } catch(_) { /* vorübergehend – weiter pollen */ }
+  }, 2500);
+}
+$('btn-reg-cancel').onclick = async () => { const t = regToken; resetReg(); if (t) { try { await api('/register/cancel', { token: t }); } catch(_) {} } };
+
+// --- Konto-Einstellungen ---
+$('btn-set-pw').onclick = async () => {
+  const np = $('set-new').value;
+  if (!np && account && !account.hasPassword) return setMsg('set-msg', 'Bitte ein Passwort eingeben.', 'bad');
+  if (!np && !confirm('Passwort wirklich entfernen? Anmeldung dann nur noch per Matrix-Link.')) return;
+  try {
+    const j = await api('/me/password', { currentPassword: $('set-cur').value, newPassword: np });
+    setAccount(j.user); openAcct('settings'); setMsg('set-msg', np ? 'Passwort gespeichert.' : 'Passwort entfernt.', 'ok');
+  } catch(e){ setMsg('set-msg', e.message, 'bad'); }
+};
+$('btn-logout-all').onclick = async () => {
+  if (!confirm('Auf allen Geräten abmelden?')) return;
+  try { await api('/me/logout-all', {}); } catch(_) {}
+  setAccount(null); closeAcct(); reconnectWs(); toast('Überall abgemeldet.');
+};
+
+// --- Start: Konfiguration, Login-Link (?mlogin=…) ---
+(async () => {
+  try { acctCfg = await api('/config'); } catch(_) { acctCfg = { enabled:false }; }
+  if (!acctCfg.enabled) return;
+  $('acct-bar').classList.remove('hidden');
+  $('btn-login-matrix').classList.toggle('hidden', !acctCfg.matrixLogin);
+  const params = new URLSearchParams(location.search);
+  const ml = params.get('mlogin');
+  if (ml) {
+    params.delete('mlogin');
+    const q = params.toString();
+    history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+    try { const j = await api('/login/matrix/redeem', { token: ml }); setAccount(j.user); reconnectWs(); toast('Angemeldet als ' + j.user.username + '.'); return; }
+    catch(e){ toast('⚠ ' + e.message); }
+  }
+  try { const j = await api('/me'); setAccount(j.user); } catch(_) {}
+})();
