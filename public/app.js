@@ -157,11 +157,13 @@ function renderGame(m){
     opp.appendChild(d);
   }
 
-  // aktueller Stich bzw. – für 5 s nach Abschluss – der gerade beendete Stich
+  // aktueller Stich bzw. – für 5 s nach Abschluss – der gerade beendete Stich.
+  // Nach dem letzten Stich einer Runde bleibt er sichtbar, bis 'Nächste Runde' geklickt wurde.
   renderLastTrick(v, players);
   const tc = $('trick-cards'); tc.innerHTML='';
   const lt = $('last-trick');
-  if (v.currentTrick.length===0 && v.lastTrick && Date.now() < lastTrickUntil){
+  const roundOver = v.phase==='roundEnd' || v.phase==='gameEnd';
+  if (v.currentTrick.length===0 && v.lastTrick && (roundOver || Date.now() < lastTrickUntil)){
     v.lastTrick.cards.forEach(pl => {
       tc.appendChild(cardEl(pl.card, { who: players[pl.playerIdx].name, win: pl.playerIdx===v.lastTrick.winnerIdx }));
     });
