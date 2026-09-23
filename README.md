@@ -32,7 +32,7 @@ config.json         zentrale Konfiguration (aus config.example.json)
 game.js            Regel-Engine (rein, testbar)
 bots.js            simpler Platzhalter-Bot
 server.js          Express + WebSocket, Räume, Bot-Steuerung, Reconnect
-public/            Frontend (index.html, style.css, app.js)
+public/            Frontend (index.html, style.css, app.js) + regeln.html (eigenständige Regelseite)
 test/simulate.js   kopflose Vollspiel-Simulation (npm test)
 deploy/            Proxmox-LXC + systemd + nginx + coturn/ENV (Voice)
 ```

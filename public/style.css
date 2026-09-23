@@ -237,3 +237,9 @@ button.link{background:none;border:none;color:var(--accent);padding:.3em;text-de
 @media (max-width:879px){ #myhand-wrap{padding-bottom:calc(66px + env(safe-area-inset-bottom,0px))} }
 .feedback{margin-top:1rem;text-align:center}
 .feedback a{color:inherit;text-decoration:underline}
+
+/* Regel-Link als gut lesbarer Button */
+a.btn-link{display:inline-block;background:#173f2c;color:#eaf4ee;border:1px solid #2f6b4c;
+  border-radius:8px;padding:.5em 1em;text-decoration:none;font-weight:600}
+a.btn-link:hover{background:#1f5138}
+a.btn-link.hdr-btn{padding:.3em .7em;font-size:.9rem}

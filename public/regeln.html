@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portriga – Regeln</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#273449; --line:#334155;
+    --text:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; --accent2:#22d3ee;
+    --good:#4ade80; --bad:#f87171; --deal:#fbbf24;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.6}
+  header{padding:18px 20px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  h1{font-size:22px;margin:0;letter-spacing:.5px}
+  h1 span{color:var(--accent)}
+  main{max-width:900px;margin:0 auto;padding:20px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:22px;margin-bottom:20px}
+  h2{font-size:19px;margin:0 0 12px;color:var(--accent2)}
+  h3{font-size:16px;margin:18px 0 6px}
+  h4{font-size:14px;margin:14px 0 4px;color:var(--muted)}
+  p{margin:8px 0}
+  ul{margin:8px 0;padding-left:22px}
+  li{margin:4px 0}
+  a{color:var(--accent)}
+  .nav{display:flex;gap:8px;flex-wrap:wrap}
+  .nav a{text-decoration:none;border-radius:9px;padding:9px 16px;font-size:14px;font-weight:600;
+    background:var(--panel2);color:var(--text);border:1px solid var(--line);transition:.15s}
+  .nav a:hover{filter:brightness(1.15)}
+  .nav a.active{background:var(--accent);color:#082f49;border-color:var(--accent)}
+  .lead{color:var(--muted);font-size:15px}
+  table{width:100%;border-collapse:collapse;margin:10px 0}
+  th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top;font-size:14px}
+  th{color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:12px}
+  td.pt{font-weight:700;color:var(--accent2);white-space:nowrap}
+  .note{background:var(--panel2);border-left:3px solid var(--accent);border-radius:8px;
+    padding:10px 14px;margin:12px 0;font-size:14px}
+  .cardrow{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px}
+  .cardrow .card{background:transparent;border:0;border-radius:0;padding:0;margin:0;
+    display:flex;flex-direction:column;align-items:center;gap:6px}
+  .cardrow .card img{width:70px;height:auto;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.5);
+    background:#fff}
+  .cardrow figcaption{font-size:13px;color:var(--muted)}
+  .foot{color:var(--muted);font-size:13px;text-align:center;padding:20px}
+</style>
+</head>
+<body>
+<header>
+  <h1>PORT<span>RIGA</span> · Regeln</h1>
+  <nav class="nav">
+    <a href="./">Online spielen</a>
+    <a href="regeln.html" class="active">Regeln</a>
+  </nav>
+</header>
+<main>
+
+  <section class="card">
+    <h2>Worum geht es?</h2>
+    <p class="lead">Portriga ist ein Spiel, in dem es darum geht, seine Karten und seine Mitspieler
+      richtig einzuschätzen. Wie viele Stiche bekommst du? Was machen deine Mitspieler?
+      Je mehr Spieler mitspielen, desto unvorhergesehener und spaßiger wird es!</p>
+  </section>
+
+  <section class="card">
+    <h2>1. Voraussetzungen</h2>
+    <ul>
+      <li>2 Skatblätter ⇒ 64 Karten</li>
+      <li>Etwas, das anzeigt, wie viele Stiche man glaubt zu bekommen – z.&nbsp;B. Würfel
+        (im Folgenden wird immer von Würfeln gesprochen). Anzahl: je nach Gierigkeit der
+        Mitspieler bis zu 63 Stück, meist reichen aber 10–15 Stück.</li>
+      <li>Anzahl Spieler: 2–7. <i>Im Online-Spiel sind 2–7 Spieler möglich. Unter <a href="#varianten">Alternative Varianten</a>
+        werden Varianten für noch mehr Spieler vorgestellt.</i></li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>2. Wertigkeit der Karten</h2>
+    <p>Von hoch nach niedrig: Ass · 7 · König · Dame · Bube · 10 · 9 · 8.</p>
+                <div class="cardrow">
+                  <figure class="card"><img src="data:image/gif;base64,R0lGODlhWgCMAKEAAAAAAP////8AAP///yH5BAEKAAMALAAAAABaAIwAAAL+nG+gy+0Po5wQWbSC3rz7D4biCC7XAZDqyrYicKbuTNcfjNn6PuODvBEIBbwibUjk4IABpNAIVTmTmiXn2aRGtx4stvrreLXcclbzrTKzSLObPewoxM63eSpfj+3lvVKflMZn5LcxdxVINshTqLb4OHIIOZlHaWm4FnRJWJLJtrkT5yEZ1AZ6ZPpHV3faMkVG+irYGiKrRQonSiuFp7o6uyvC6rsa7KJLLGY8o+i4/Ib7vBUtDUVdXXSNvaO9bdPtTQMe7jJOzmJ+rpKuHunZXv4Ojy4/v15v755fw76f7L+iH8AAAgEW9HdwX8J8C+01nPcQXsR2E9VVPHeRXMb+cBu9ddz2EVvIaiOllXx2clnKD80GrSxG6WUpZItk5gIGDV8UW5Be2sJZZuVPmm5SDk2V087RYUV1MlracprTp0NrTqUq65FMnlqvFnk1yWaumF4JAU1KKaodsafYgnK7Ce4luZbokh3Ywm7Ysgb5IvSrEDBDwQ4JQzQsETFFxRYZY3SsETJHyR4pg7QsEjNJzSY5o/SsErQxvT1FByPdFS891QHfqQ3XkhrRc7OjMaWN1NnM3N7AJuMKOyumX7Ox+R5OfN5tgp6KB2927XXvTqzvVSeB2iodNNKfNWK+/Qy877i+kyMPiPdzmuWXrxfUnrvyRHLClJI/nr6hBIgo1PdmakV/3UmTmw+mvWXBgXXFcN1+J/yQHTcKPJggBRZeiGGGJpxQAAA7" alt="Ass"><figcaption>Ass</figcaption></figure>
+                  <figure class="card"><img src="data:image/gif;base64,R0lGODlhWgCMAKEAAAAAAP///////////yH5BAEKAAIALAAAAABaAIwAAAL+lG+gy+0Po5wQWbSC3rz7D4biCC7XAZDqyrYicKbuTNcfjNn6PuOCrHHwhi7hBgcMGInM0VKZKCWb1JCCA5setdXu1nO9cUveY08b7qRJGW97tf6Cx/N3s8GKB9F09XP4oKK3NycIwRTBNjZomMgzYcPoRLFD0fdyKWYZaZkpRqbZSdNppyalGbp5RirFpYfnx7oqWvc6FYhF6lmrmgsrt/UbHCYjXMQQtFeqjJzrp6Tkmga0fEwdfJoSx7ibXAbdsii9W01UjloYKzncHd48ubyuaPz4d/aNP9qeny/P/08IoMBTAws6M4jQH0I3+xaaa+iwnkGIgCjqOPdN4Z3+dwA1PqSHz2M9XP9EXpTQ0aI7SPxM6uuVUWUjWjFD6uoncx7NMi6t7WSIs00xjjxzNjKjrKTRHgmXrpzoFA7RllF1YuzSM+JJrQKzctX3VWlYqmNxlrV5tmZaoI9CPhxZ1KhXZlXpSuQE8mTePBYdVSQJ9uWhkYMD+/RbA6a7WSwFN1688qdUWZD5Uo6s2NBhSow5V54seWZmRYy97bVqeqrmVUijyXxDLevc1m7eVpqNSe5r1YRzzgX8lzfftWyJU8FtPF1yRHWNI18ODPpd6dOpb7V+G3t27Zy4d/duGPxn8VLJHzM/Hj0m9eXZk3Y/CX58+VaaE38uHT90/cvL+Sf375x9awF4n4Bp2XIVcL35Q88gV9lVxWm+fHKDZXGFQ9AX2nhiIDikbfiML6rBho1erZUD3Db2wDLUg/UJBaE6pSBI42hWeSYiH+jIiKNloblGIRit/AgPkeJs9piPNq6HZGGdITbck/Y0KWF9GaYypZQu2nIlli6CVmVAB4VY5JdKauSgNGBiJZxyY0Y3z4XtuSkmHG5FCcYPb2rHTRTsdMgmR0jkCGiEwvhQaEQ++EkfFBckWtCiFpj5nwInPKpLpppuasIJBQAAOw==" alt="7"><figcaption>7</figcaption></figure>
+                  <figure class="card"><img src="data:image/gif;base64,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" alt="König"><figcaption>König</figcaption></figure>
+                  <figure class="card"><img src="data:image/gif;base64,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" alt="Dame"><figcaption>Dame</figcaption></figure>
+                  <figure class="card"><img src="data:image/gif;base64,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" alt="Bube"><figcaption>Bube</figcaption></figure>
+                  <figure class="card"><img src="data:image/gif;base64,R0lGODlhWgCMAKEAAAAAAP///////////yH5BAEKAAIALAAAAABaAIwAAAL+lG+gy+0Po5wQWbSC3rz7D4biCC7XAZDqyrYicKbuTNcfjNn6PuOCrFEEM7wiSRhgcHDAjMMIvQmfwcTGKUNGt8lptvnreIfc8ri7BJKRWql6S3yl2Oo2mh5qmJVytJ+c5md3RQX10IdHKDan58ZnWCjV9fgHSLnYCJkpOfk22HIYFWrzOULUGNdDd1pq+nbEx5rKgrramvca5Hg6tKkS+uV7VZI720lh7Ip82cuZNrssrBz9KmzHOPcc28s8zXt8PZm0+DyemtnUDRuXDj0lrsg9Cq9LmLtyXq492uZET3yvSDJM5vp5qhdQ3p6BSxCS88DQnjpSkXAVqzYRXET+FxG8QUxY5l9IZyMx3Qp5Ek7FkoBYStzIJaWolSxlasq4x6WsVS4rLeR5TCfIHcDk2aRYkhpMokN1KD1aA6oqVEabOrVKkd1LoULr6KuJVVPPj2O3lm3Zc17asEzVgj0Ll2RUqaDoyp1qd13eQFlx4l3apy9gWjTrXpV22K+rxIPxFSY8VaHIusGAcmRbqzJbyTs3Qy2q8TLV0IYJKxVN7TLl1KujqTa9jTTsb24Xtx4mGXUTs6UpN7SX9XczVTwaixa42WRyvcv5zkUseC9a3Yod14YcN/t07WWlc0f6Ha738MTJd29uvnx6ruvZt0+K/v2v+PJt1895H39+lfv+YzbvaASAczE2nnLeHVidbsXRZ5xvC0aG23A05AOcetZp0U6D6LyEWVigXWdRbCAS09oy1CHz2oWulYhib/ON9liItEGHi4Lw0CjjcDjetQ5ne3UmoYt/FbgPggTSZ2B80o04YYzzHanSjvY9d5KAAI2HpUxMBgneeQ0+KB6RKY5EIZcoISmHVka9RSYVmolJYpunwQffnG3WKaKUTIElS2538ukjmlN2lWCAgr5YKHJnbcmfl4mC6eihjn30ZY8/YeSGN4/K6Fcy4YwD6pWVcgpSFvXE0ww2acLJG0AF1ZHhiKNaSuojBmXjjlcVNqmrmf6cc5A/+0To5C7E+qKdqicY5ZqnnhyaKlur2032VId2fuWcGLuYyCIFJcSpIhtrnoiQs6iqqOOmmfk56XFBTWZaoE2aNG1VUWYUi7JF+lSkpCA+cQ2sawTEKIs13qFvPGds6+9jeATM18LG+hfRwwlbwogyctomcRJhYAzvexaD8TE4IbcHMIZWSFSvfPkugUJ/AlkgqcgxyBzVCQmwyp0JOmNQbdBCI6NzAQA7" alt="10"><figcaption>10</figcaption></figure>
+                  <figure class="card"><img src="data:image/gif;base64,R0lGODlhWgCMAKEAAAAAAP////8AAP///yH5BAEKAAMALAAAAABaAIwAAAL+nG+gy+0Po5wQWbSC3rz7D4biCC7XAZDqyrYicKbuTNcfjNn6PuODvBEIBbwibUjk4IABpNAIVTmTmiXn2aRGtx4stvrrTLlksbOj6CLLbM1ZyTS351l0PPi9rvVD2xvfJxK4kWaWB7iX9dcyRdUIkkh4N8g31nhIckmk+UEpyajJCRr62FK4QnrpklrKcirFuggb60nyqoiLSLtK69nn+Srq1ntEXLkYrHoc6her1hqQDD1MusPaqVwVN607xlMN6f1piLlc28xNrqWNvd4eWZT+fHPnhgpvJCtYUs/rDnWuR79Vc/7RuEUn4YuBChuycwjRA8KIDidSVGjxIp3+jBrbcOxY5iNILiJHRilp0gjKlDxWstTh8mWNmDIF1vTI8OYOmjpX8OxpKyfQg0KHuqApSx+LpPhUxGwlbwRUca6KdvuV7d4jYT6tUjO2tFe5haPAajXr1KsitJnEGgzh0u3bcGKPql17bUZdu3qd1dhlsy84dMyI/i1sDXHgYlEFU13MuKmOxmkTB7Q81tTddmwua45XUOVmo2QLwlNKcnTZQZSL/Dx7hiuZ17PYbqHddi8b3FLdzuEtyDdO04CHE0+VEHhuxcbpDN6oOjLqkNGlZ6YOcfru6ofnbgfNiKBr7rnIeK6K2Xv3610nP/72nu967f7io7dOH7b9yo7+ZffP+ll9zwnIXHurIfffgPzpl1dYuhnIIIIO2lZahAr29uCCtRVnYYEjxKWKfxhaAmBQBDqyX3B/tCbRZkydp+Ih+dFDGhTK1XgjaTkateNQPQL1Y09B6jTkTUXWdKRMSb60JEtNpvSkSVGONCVIVXYEnHrWiAaJg52xJwY/nC2nZX9a0ajOiDCeSGaL6mQm4nySfQUMEyJemKBkXEnzXoNyprOnnQByeGKJgRpSHp0SHqggVuuAmCGZft3XYZwhyCVfpSWqOSmEfDxD4aXCzWMHqKDGtmmMqAJayy2XTTXjqV+wapCr3r0Ipqi+6PmWrWvWpI+vv770GAyCDlMvox7IEpLAMsl2o0SzlTw7bbTSUnuUBeQBGQO2Pp2QwJWzKQCuthSci2666ppwQgEAOw==" alt="9"><figcaption>9</figcaption></figure>
+                  <figure class="card"><img src="data:image/gif;base64,R0lGODlhWgCMAKEAAAAAAP///////////yH5BAEKAAIALAAAAABaAIwAAAL+lG+gy+0Po5wQWbSC3rz7D4biCC7XAZDqyrYicKbuTNcfjNn6PuOCvGHwhjQhBwcMOIhM1TKYOMoUzWqIqkzCklkN1goOTrlfcXnEtaZfmc4Zey7FmW0SnIz3rt3GasM5xsfXJ/fX9GBnKOZBeANB94hWt1gkMTRhM5eIqUOxl9jj+blJUVlSKFop+rk3N2mWGrpa6MjYmDUrGzsY9/YE66m6C+zL+4oLp3fMYji2jCglmOL6BbTcUmetSTWdd4MdFuTSunZtO7pjfl5rTIpeo8h2rLkCDRlvGq4P/77vL/gvICiBBOUUPAgQIUJ6CvcxbBjuIUQwEikqrOgHY8b+gvj+abz0K+DHdJFE9gMZQeBIfpz8rdTVUt9LbKtOdrLJcliYmcxqusQpLJhDoEG9KONJ02M1MyYXXiTKQ11EqDelUqSa0+rGiQSRcg31VSXWsOPGku159mfaoWtlmm3L5pJDIl5xTX3bpWpdR1ol6e3bs2PZTCWjFgYbNCThlPwS28t6GG1ZoY4jA5qss57PwTRzYaYsOXBmQJ5Day4tGrRmmEaRYW12FOrLbEyrilPWOOpckIbx0jJMEnDnukgfo7zFGa4a38oTNof0fGt0usyn752uBzt17bzFCnbLETnb8NVNq3yq1FpttUPbOLvu1y3qq+1HS9+5Gbx8+4fryvMtxV59jAUooGL6pWfggQgK15138JmX3kL+OYEedyRZeCGGhGm4IYf5eJgcMJJ8t5h4UsxTTkUk/nUaO4wEdhc4LmbXDYUyrVZjNCciRxtutrVm13+v+NIRbK6VOEVsQhbTjjEAfvbkjmlQk+J8pNn3TCuoqHYaf+RAGVNqUa4GpmVdhklmmSteOWCIR8ljppoP3UKkOm0Gl6CU3lAyZ55ISnSHc3kBaiKLAzG5Y4v42USnNxhNeIRkb/yg44NN5eVFFMRgGBISvHDYiA+QnuWDpiC+EMOpV5yQgKUNmcAqBjXNSmutsF5QAAA7" alt="8"><figcaption>8</figcaption></figure>
+                </div>
+  </section>
+
+  <section class="card">
+    <h2>3. Grundlagen</h2>
+
+    <h3>3.1 Anzahl der Karten</h3>
+    <p>Zu Beginn jeder Runde werden die Karten verteilt. Die Anzahl der Karten pro Spieler
+      ist in der ersten Runde 1 und steigt bis auf 8. Die 8 Karten werden so oft gespielt,
+      wie es Spieler gibt (bei 7 Spielern also 7 Runden lang). Anschließend wird wieder
+      absteigend ausgeteilt, bis die letzte Runde wieder mit 1 Karte gespielt wird.
+      Der Geber wechselt pro Runde im Uhrzeigersinn.</p>
+
+    <h3>3.2 Trumpf</h3>
+    <p>Sind die Karten verteilt, wird eine Karte aufgedeckt – das ist der Trumpf. Er gilt
+      für die komplette Runde (z.&nbsp;B. bei einer 8-Karten-Runde 8 Stiche lang).</p>
+
+    <h3>3.3 Würfel</h3>
+    <p>Anschließend muss der nach dem Kartengeber drankommende Spieler sich so viele Würfel
+      nehmen, wie er glaubt, Stiche zu erzielen. Der Würfelbecher wird im Uhrzeigersinn
+      weitergegeben, bis jeder die Möglichkeit hatte, Würfel zu nehmen. Zuletzt kommt der
+      Kartengeber an die Reihe.</p>
+
+    <h3>3.4 Ausspielen</h3>
+    <p>Zu Beginn einer Runde darf derjenige ausspielen, der sich zuerst Würfel genommen hat.
+      Danach spielt bis zum Ende der Runde immer derjenige aus, der den vorherigen Stich
+      bekommen hat.</p>
+
+    <h3>3.5 Besonderheiten</h3>
+    <p>Um das Spiel taktischer zu machen, gilt: der 2. übersticht den 1. Spielen also alle
+      dieselbe Farbe und es werden zwei Asse gespielt, bekommt derjenige den Stich, der als
+      2. das Ass geworfen hat.</p>
+
+    <h3>3.6 Punkte</h3>
+    <p>Ist die Vorhersage der Stiche korrekt (auch bei der Vorhersage „kein Stich“!), gibt es
+      10 Punkte. Für jeden korrekt vorhergesagten Stich zusätzlich 3 Punkte.
+      Ist die Vorhersage nicht korrekt (auch wenn man nur um einen Stich danebenliegt!),
+      gibt es keine 10 Punkte, sondern für jeden Würfel Differenz je 3 Minuspunkte.</p>
+
+    <h4>Positive Beispiele</h4>
+    <table>
+      <tr><th>Ergebnis</th><th>Punkte</th><th>Erklärung</th></tr>
+      <tr><td>0 Stiche vorhergesagt, 0 bekommen</td><td class="pt">+10</td><td>Richtige Vorhersage.</td></tr>
+      <tr><td>1 Würfel, 1 Stich</td><td class="pt">+13</td><td>10 + 1×3.</td></tr>
+      <tr><td>2 Würfel, 2 Stiche</td><td class="pt">+16</td><td>10 + 2×3.</td></tr>
+      <tr><td>X Würfel, X Stiche</td><td class="pt">10 + X×3</td><td>10 für die Vorhersage + X×3.</td></tr>
+    </table>
+
+    <h4>Negative Beispiele</h4>
+    <table>
+      <tr><th>Ergebnis</th><th>Punkte</th><th>Erklärung</th></tr>
+      <tr><td>0 Stiche, aber 1 Würfel genommen</td><td class="pt">−3</td><td>Differenz 1 → 1×3 abgezogen.</td></tr>
+      <tr><td>1 Stich, aber 0 Würfel</td><td class="pt">−3</td><td>Differenz 1 → 1×3 abgezogen.</td></tr>
+      <tr><td>5 Stiche, aber 6 Würfel</td><td class="pt">−3</td><td>Differenz 1 → 1×3 abgezogen.</td></tr>
+      <tr><td>3 Stiche, aber 1 Würfel</td><td class="pt">−6</td><td>Differenz 2 → 2×3 abgezogen.</td></tr>
+    </table>
+
+    <h3>3.7 Ziel des Spiels</h3>
+    <p>Wer am Ende der letzten Runde die meisten Punkte hat, gewinnt.</p>
+
+    <h3 id="varianten">3.8 Alternative Varianten</h3>
+    <p>Möchte man mit mehr als 7 Spielern spielen, kann man die maximale Kartenanzahl pro
+      Runde reduzieren. Dazu teilt man 64 durch die gewünschte Spieleranzahl. Ist das
+      Ergebnis eine gerade Zahl, muss nochmal eine Karte abgezogen werden.</p>
+    <div class="note">
+      <b>8 Spieler:</b> 64 / 8 = 8 → gerade Zahl, also 8 − 1 = <b>7</b> Karten max. pro Runde.<br>
+      <b>9 Spieler:</b> 64 / 9 = 7,1 → keine gerade Zahl, also <b>7</b> Karten max. pro Runde.
+    </div>
+  </section>
+
+  <div class="foot">Portriga · Regeln · <a href="./">Zurück zum Online-Spiel</a></div>
+</main>
+</body>
+</html>
