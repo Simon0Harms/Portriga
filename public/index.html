@@ -58,6 +58,7 @@
       <div class="hdr-item">Stiche: <b id="tricks-progress"></b></div>
     </header>
 
+    <div id="table-wrap">
     <div id="table">
       <div id="opponents"></div>
       <div id="trick-area">
@@ -65,6 +66,13 @@
         <div id="last-trick"></div>
       </div>
       <div id="turn-banner"></div>
+      <button id="btn-last-trick" class="hidden">Letzter Stich</button>
+    </div>
+    <aside id="last-trick-side" class="hidden">
+      <h3>Letzter Stich</h3>
+      <div class="lt-cards"></div>
+      <div class="lt-winner"></div>
+    </aside>
     </div>
 
     <div id="bidding" class="hidden">
@@ -75,6 +83,15 @@
     <div id="myhand-wrap">
       <div id="my-meta"></div>
       <div id="myhand"></div>
+    </div>
+
+    <div id="last-trick-modal" class="hidden">
+      <div class="panel">
+        <h2>Letzter Stich</h2>
+        <div class="lt-cards"></div>
+        <div class="lt-winner"></div>
+        <button id="btn-lt-close" class="primary">Schließen</button>
+      </div>
     </div>
 
     <div id="overlay" class="hidden">

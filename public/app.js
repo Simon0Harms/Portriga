@@ -157,16 +157,21 @@ function renderGame(m){
     opp.appendChild(d);
   }
 
-  // aktueller Stich
+  // aktueller Stich bzw. – für 5 s nach Abschluss – der gerade beendete Stich
+  renderLastTrick(v, players);
   const tc = $('trick-cards'); tc.innerHTML='';
-  v.currentTrick.forEach(pl => {
-    tc.appendChild(cardEl(pl.card, { who: players[pl.playerIdx].name }));
-  });
-  // letzter Stich
   const lt = $('last-trick');
-  if (v.lastTrick && v.currentTrick.length===0){
-    lt.textContent = `Letzter Stich → ${players[v.lastTrick.winnerIdx].name}`;
-  } else lt.textContent='';
+  if (v.currentTrick.length===0 && v.lastTrick && Date.now() < lastTrickUntil){
+    v.lastTrick.cards.forEach(pl => {
+      tc.appendChild(cardEl(pl.card, { who: players[pl.playerIdx].name, win: pl.playerIdx===v.lastTrick.winnerIdx }));
+    });
+    lt.textContent = `Stich geht an ${players[v.lastTrick.winnerIdx].name}`;
+  } else {
+    v.currentTrick.forEach(pl => {
+      tc.appendChild(cardEl(pl.card, { who: players[pl.playerIdx].name }));
+    });
+    lt.textContent = '';
+  }
 
   // Zug-Banner
   const banner = $('turn-banner');
@@ -219,6 +224,38 @@ function renderGame(m){
     $('ov-home').classList.toggle('hidden', v.phase!=='gameEnd');
   } else ov.classList.add('hidden');
 }
+// ---------- Letzter Stich (Issue #1) ----------
+const LAST_TRICK_SHOW_MS = 5000;
+let lastTrickKey = null, lastTrickUntil = 0, lastTrickTimer = null;
+
+function renderLastTrick(v, players){
+  const key = v.lastTrick ? `${v.roundIndex}-${v.tricksPlayed}` : null;
+  if (key && key !== lastTrickKey){
+    // neuer Stich abgeschlossen -> 5 s in der Tischmitte zeigen
+    lastTrickUntil = Date.now() + LAST_TRICK_SHOW_MS;
+    clearTimeout(lastTrickTimer);
+    lastTrickTimer = setTimeout(() => { if (lastState) renderGame(lastState); }, LAST_TRICK_SHOW_MS + 50);
+  }
+  lastTrickKey = key;
+
+  const has = !!v.lastTrick;
+  $('last-trick-side').classList.toggle('hidden', !has);
+  $('btn-last-trick').classList.toggle('hidden', !has);
+  if (!has) $('last-trick-modal').classList.add('hidden');
+  for (const box of [$('last-trick-side'), $('last-trick-modal')]){
+    const cards = box.querySelector('.lt-cards'); cards.innerHTML = '';
+    const win = box.querySelector('.lt-winner');
+    if (!has){ win.textContent = ''; continue; }
+    v.lastTrick.cards.forEach(pl => {
+      cards.appendChild(cardEl(pl.card, { who: players[pl.playerIdx].name, win: pl.playerIdx===v.lastTrick.winnerIdx }));
+    });
+    win.textContent = `→ ${players[v.lastTrick.winnerIdx].name}`;
+  }
+}
+$('btn-last-trick').onclick = () => $('last-trick-modal').classList.remove('hidden');
+$('btn-lt-close').onclick = () => $('last-trick-modal').classList.add('hidden');
+$('last-trick-modal').onclick = e => { if (e.target.id === 'last-trick-modal') $('last-trick-modal').classList.add('hidden'); };
+
 $('ov-next').onclick = () => send({ type:'nextRound' });
 $('ov-home').onclick = () => { send({ type:'leaveRoom' }); };
 

@@ -193,12 +193,17 @@ function broadcast(room) {
 }
 
 /* Bots automatisch ziehen lassen, solange ein Bot am Zug ist. */
+const LAST_TRICK_SHOW_MS = 5000;
 function driveBots(room) {
   const g = room.game;
   if (!g) return;
   if (g.phase !== 'bidding' && g.phase !== 'playing') return;
   const seat = room.seats[g.turnIdx];
   if (!seat || !seat.bot) return;
+  // Nach einem abgeschlossenen Stich warten Bots die Anzeigedauer des
+  // letzten Stichs ab (Issue #1), sonst wird er sofort überdeckt.
+  const delay = (g.phase === 'playing' && g.currentTrick.length === 0 && g.tricksPlayed > 0)
+    ? LAST_TRICK_SHOW_MS : CONFIG.bots.moveDelayMs;
   setTimeout(() => {
     try {
       if (g.phase === 'bidding') g.placeBid(seat.id, botBid(g, g.turnIdx));
@@ -206,7 +211,7 @@ function driveBots(room) {
     } catch (e) { /* Zustand hat sich geändert – ignorieren */ }
     broadcast(room);
     driveBots(room);
-  }, CONFIG.bots.moveDelayMs);
+  }, delay);
 }
 
 function seatOf(room, clientId) { return room.seats.find(s => s.id === clientId); }

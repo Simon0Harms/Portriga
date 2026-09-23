@@ -59,6 +59,7 @@ button.link{background:none;border:none;color:var(--accent);padding:.3em;text-de
 .trump{font-weight:800}
 .trump.red{color:#ff6b78}.trump.black{color:#dfe}
 
+#table-wrap{flex:1;display:flex;align-items:stretch}
 #table{flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 8px;position:relative}
 #opponents{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;width:100%}
 .opp{
@@ -158,3 +159,24 @@ button.link{background:none;border:none;color:var(--accent);padding:.3em;text-de
 .voice-controls{display:flex;gap:6px}
 .voice-ctl{font-size:.82rem;padding:.4em .7em}
 #voice-mute.on{background:var(--danger);color:#fff;border-color:var(--danger)}
+
+/* --- Letzter Stich (Issue #1) --- */
+.lt-cards{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;padding-top:18px}
+.lt-winner{text-align:center;font-size:.85rem;color:var(--gold);margin-top:8px;font-weight:600}
+#last-trick-side{
+  width:220px;margin:14px 10px 14px 0;padding:10px;border-radius:12px;align-self:flex-start;
+  background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.12);
+}
+#last-trick-side h3{margin:0 0 4px;font-size:.9rem;color:var(--gold);text-align:center}
+#last-trick-side .card{width:48px;height:68px}
+#btn-last-trick{font-size:.85rem;padding:.4em .9em}
+#last-trick-modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:15;padding:16px}
+#last-trick-modal .panel{text-align:center}
+#last-trick-modal .primary{margin-top:14px}
+/* Große Bildschirme: Seitenleiste, kein Button. Kleine: Button + Popup. */
+@media (min-width:900px){
+  #btn-last-trick,#last-trick-modal{display:none !important}
+}
+@media (max-width:899px){
+  #last-trick-side{display:none !important}
+}
