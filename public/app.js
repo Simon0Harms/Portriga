@@ -219,7 +219,7 @@ function renderGame(m){
     const sorted = players.slice().sort((a,b)=>b.score-a.score);
     sorted.forEach((p,i)=>{
       const li=document.createElement('li'); if(i===0) li.className='lead';
-      li.innerHTML=`<span>${i+1}. ${escapeHtml(p.name)}${p.bot?' 🤖':''} <span class="hint">(Ansage ${p.bid==null?'–':p.bid}, ${p.tricks} Stiche)</span></span><span class="sc">${p.score}</span>`;
+      li.innerHTML=`<span>${i+1}. ${escapeHtml(p.name)}${p.bot?' 🤖':''} <span class="hint">(Ansage ${p.bid==null?'–':p.bid}, ${p.tricks} Stiche)</span></span><span class="sc">${p.lastDelta==null?'':`<span class="delta ${p.lastDelta>=0?'pos':'neg'}">${p.lastDelta>0?'+':''}${p.lastDelta}</span> `}${p.score}</span>`;
       sc.appendChild(li);
     });
     $('ov-next').classList.toggle('hidden', v.phase!=='roundEnd');

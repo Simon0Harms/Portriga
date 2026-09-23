@@ -108,6 +108,9 @@ button.link{background:none;border:none;color:var(--accent);padding:.3em;text-de
 .scoreboard li{display:flex;justify-content:space-between;padding:.4em .6em;border-radius:8px;background:rgba(255,255,255,.06);margin:.25em 0}
 .scoreboard li.lead{background:rgba(231,199,107,.2)}
 .scoreboard .sc{font-weight:800;color:var(--gold)}
+.scoreboard .delta{font-weight:700;font-size:.85em;margin-right:.4em}
+.scoreboard .delta.pos{color:var(--accent)}
+.scoreboard .delta.neg{color:var(--danger)}
 
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#222;color:#fff;
   padding:.7em 1.1em;border-radius:10px;z-index:30;box-shadow:0 6px 20px rgba(0,0,0,.5);border:1px solid #444}

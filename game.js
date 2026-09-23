@@ -96,7 +96,7 @@ class Game {
     this.rng = opts.rng || Math.random;
     this.players = players.map(p => ({
       id: p.id, name: p.name, bot: !!p.bot,
-      hand: [], bid: null, tricks: 0, score: 0,
+      hand: [], bid: null, tricks: 0, score: 0, lastDelta: null,
     }));
     this.roundPlan = buildRoundPlan(this.players.length);
     this.roundIndex = -1;
@@ -136,6 +136,7 @@ class Game {
       k += count;
       p.bid = null;
       p.tricks = 0;
+      p.lastDelta = null;
     }
     // Trumpf aufdecken
     this.trumpCard = deck[k] || null;
@@ -233,11 +234,11 @@ class Game {
 
   _scoreRound() {
     for (const p of this.players) {
-      if (p.bid === p.tricks) {
-        p.score += 10 + p.tricks * 3; // korrekt: 10 + Stiche*3 (auch bei 0)
-      } else {
-        p.score -= Math.abs(p.bid - p.tricks) * 3; // Differenz * 3 Minuspunkte
-      }
+      const delta = (p.bid === p.tricks)
+        ? 10 + p.tricks * 3                  // korrekt: 10 + Stiche*3 (auch bei 0)
+        : -Math.abs(p.bid - p.tricks) * 3;   // Differenz * 3 Minuspunkte
+      p.score += delta;
+      p.lastDelta = delta; // Punkte dieser Runde (für Rundenende-Anzeige)
     }
     if (this.isLastRound) {
       this.phase = 'gameEnd';
@@ -294,6 +295,7 @@ class Game {
         bid: p.bid,
         tricks: p.tricks,
         score: p.score,
+        lastDelta: p.lastDelta,
         isDealer: i === this.dealerIdx,
         isTurn: i === this.turnIdx,
       })),
