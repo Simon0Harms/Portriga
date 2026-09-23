@@ -1,7 +1,7 @@
 {
   "name": "Portriga",
   "short_name": "Portriga",
-  "description": "Stichvorhersage-Kartenspiel · 2–7 Spieler",
+  "description": "Stichvorhersage-Kartenspiel · 2–7 Spieler (mehr mit alternativer Variante)",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",

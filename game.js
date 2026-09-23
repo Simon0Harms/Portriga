@@ -58,17 +58,38 @@ function shuffle(arr, rng = Math.random) {
   return a;
 }
 
+// Spieleranzahl: 2..MAX_PLAYERS_LIMIT. Ab 8 Spielern greift die alternative Variante
+// (reduzierte Maximal-Kartenzahl, siehe maxCardsFor). Oberes Limit 63, weil mindestens
+// 1 Karte pro Spieler + 1 Trumpfkarte aus 64 Karten übrig bleiben muss.
+const MIN_PLAYERS = 2;
+const MAX_PLAYERS_LIMIT = 63;
+const DECK_SIZE = 64;
+
 /**
- * Rundenfolge der Kartenanzahl pro Spieler.
- * 1..7 aufsteigend, dann 8 genau N-mal, dann 7..1 absteigend.
+ * Maximale Kartenanzahl pro Spieler und Runde.
+ * Standard (2–7 Spieler): 8.
+ * Alternative Variante (> 7 Spieler, Regeln 3.8): 64 / Spieleranzahl, abgerundet;
+ * geht die Division glatt auf (gerade Zahl), eine Karte weniger – damit bleibt immer
+ * mindestens eine Karte als Trumpf übrig. Das ist gleichbedeutend mit floor(63 / N).
+ *   8 Spieler -> 7, 9 -> 7, 10 -> 6, 12 -> 5, 16 -> 3, 32 -> 1.
+ */
+function maxCardsFor(numPlayers) {
+  return Math.min(8, Math.floor((DECK_SIZE - 1) / numPlayers));
+}
+
+/**
+ * Rundenfolge der Kartenanzahl pro Spieler (M = maxCardsFor(N)).
+ * 1..M-1 aufsteigend, dann M genau N-mal, dann M-1..1 absteigend.
  * (Regel: "steigt bis 8; die 8 wird so oft gespielt wie es Spieler gibt;
- *  anschließend absteigend, letzte Runde wieder 1 Karte".)
+ *  anschließend absteigend, letzte Runde wieder 1 Karte".
+ *  Bei > 7 Spielern tritt M an die Stelle der 8.)
  */
 function buildRoundPlan(numPlayers) {
+  const max = maxCardsFor(numPlayers);
   const plan = [];
-  for (let c = 1; c <= 7; c++) plan.push(c);
-  for (let i = 0; i < numPlayers; i++) plan.push(8);
-  for (let c = 7; c >= 1; c--) plan.push(c);
+  for (let c = 1; c < max; c++) plan.push(c);
+  for (let i = 0; i < numPlayers; i++) plan.push(max);
+  for (let c = max - 1; c >= 1; c--) plan.push(c);
   return plan;
 }
 
@@ -90,8 +111,8 @@ class Game {
    * @param {object} [opts] { rng }
    */
   constructor(players, opts = {}) {
-    if (players.length < 2 || players.length > 7) {
-      throw new Error('Spieleranzahl muss 2–7 betragen.');
+    if (players.length < MIN_PLAYERS || players.length > MAX_PLAYERS_LIMIT) {
+      throw new Error(`Spieleranzahl muss ${MIN_PLAYERS}–${MAX_PLAYERS_LIMIT} betragen.`);
     }
     this.rng = opts.rng || Math.random;
     this.players = players.map(p => ({
@@ -276,6 +297,7 @@ class Game {
       roundIndex: this.roundIndex,
       roundNumber: this.roundIndex + 1,
       totalRounds: this.roundPlan.length,
+      maxCards: maxCardsFor(this.numPlayers),
       cardsThisRound: this.phase === 'lobby' ? null : this.cardsThisRound,
       trumpCard: this.trumpCard,
       trumpSuit: this.trumpSuit,
@@ -311,4 +333,4 @@ function sortHand(a, b) {
   return rankStrength(b.rank) - rankStrength(a.rank);
 }
 
-module.exports = { Game, buildDeck, buildRoundPlan, trickScore, rankStrength, setRanks, SUITS, RANKS };
+module.exports = { Game, buildDeck, buildRoundPlan, maxCardsFor, MIN_PLAYERS, MAX_PLAYERS_LIMIT, trickScore, rankStrength, setRanks, SUITS, RANKS };

@@ -10,8 +10,9 @@ Verlauf (bleibt bei Reconnect erhalten), Ungelesen-Zähler und dezenten System-M
 Zusätzlich gibt es einen **Voice-Chat** als WebRTC-Mesh (Details unten).
 
 ## Umgesetzte Regeln
-- 2 Skatblätter = 64 Karten (jede Karte doppelt), 2–7 Spieler.
+- 2 Skatblätter = 64 Karten (jede Karte doppelt), 2–7 Spieler; mit der **alternativen Variante** mehr (Standard-Limit 63, per `game.maxPlayers` einschränkbar).
 - Rundenfolge der Kartenanzahl pro Spieler: **1→7 aufsteigend, dann 8 genau *N*-mal (N = Spieleranzahl), dann 7→1 absteigend.** Geber wandert pro Runde im Uhrzeigersinn.
+- Alternative Variante (> 7 Spieler): Maximal-Kartenzahl M = 64 / N abgerundet, bei glatter Division −1 (= `floor(63/N)`): 8 → 7, 9 → 7, 10 → 6, 12 → 5. Rundenfolge dann 1→M−1, M genau N-mal, M−1→1.
 - Nach dem Austeilen wird eine Karte als **Trumpf** aufgedeckt (gilt die ganze Runde).
 - **Ansage** reihum ab links vom Geber, Geber zuletzt (0 bis Kartenanzahl).
 - Ausgespielt wird zuerst vom ersten Ansager, danach vom Gewinner des letzten Stichs.
@@ -59,7 +60,10 @@ Priorität: eingebaute Defaults < `config.json` < Umgebungsvariablen (`portriga.
   },
   "chat": { "historyMax": 60, "textMax": 300 },
   "bots": { "moveDelayMs": 700 },   // Zug-Tempo der Bots (ms)
-  "game": { "ranks": ["A","7","K","D","B","10","9","8"] }  // Kartenwertigkeit hoch->niedrig (genau 8, eindeutig)
+  "game": {
+    "ranks": ["A","7","K","D","B","10","9","8"],  // Kartenwertigkeit hoch->niedrig (genau 8, eindeutig)
+    "maxPlayers": 63                               // Plätze pro Raum (2–63); > 7 = alternative Variante
+  }
 }
 ```
 Die **Kartenwertigkeit** (die geflaggte Annahme von der Regelseite) lässt sich hier ohne

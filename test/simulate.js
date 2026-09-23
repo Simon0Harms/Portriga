@@ -4,7 +4,7 @@
  * und die Rundenanzahl stimmt. Kein Beweis für Regel-Korrektheit,
  * aber fängt Logik-/Absturzfehler zuverlässig ab. */
 const assert = require('assert');
-const { Game, buildRoundPlan } = require('../game');
+const { Game, buildRoundPlan, maxCardsFor } = require('../game');
 const { botBid, botCardId } = require('../bots');
 
 function playOneGame(n) {
@@ -35,7 +35,13 @@ function playOneGame(n) {
   return g.standings();
 }
 
-for (let n = 2; n <= 7; n++) {
+// Alternative Variante: erwartete Maximal-Kartenzahl laut Regeln 3.8
+for (const [n, max] of [[2, 8], [7, 8], [8, 7], [9, 7], [10, 6], [12, 5], [16, 3], [32, 1], [63, 1]]) {
+  assert.strictEqual(maxCardsFor(n), max, `maxCardsFor(${n})`);
+  assert(n * max < 64, `kein Trumpf übrig bei ${n} Spielern`);
+}
+
+for (const n of [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 16]) {
   for (let rep = 0; rep < 200; rep++) {
     const st = playOneGame(n);
     assert(st.length === n);

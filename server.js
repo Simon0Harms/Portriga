@@ -5,7 +5,7 @@ const fs = require('fs');
 const express = require('express');
 const QRCode = require('qrcode');
 const { WebSocketServer } = require('ws');
-const { Game, setRanks } = require('./game');
+const { Game, setRanks, MAX_PLAYERS_LIMIT } = require('./game');
 const { botBid, botCardId } = require('./bots');
 
 // ---- Zentrale Konfiguration ----
@@ -29,7 +29,10 @@ function loadConfig() {
     ice: { stun: 'stun:stun.l.google.com:19302', turn: null }, // turn: {url,user,pass}
     chat: { historyMax: 60, textMax: 300 },
     bots: { moveDelayMs: 700 },
-    game: { ranks: null }, // null = eingebaute Standard-Wertigkeit (siehe game.js)
+    game: {
+      ranks: null,     // null = eingebaute Standard-Wertigkeit (siehe game.js)
+      maxPlayers: 63,  // 2–63; > 7 = alternative Variante mit reduzierter Kartenanzahl
+    },
   };
   let file = {};
   const cfgPath = path.join(__dirname, 'config.json');
@@ -53,6 +56,13 @@ const CONFIG = loadConfig();
 if (CONFIG.game && CONFIG.game.ranks) {
   try { setRanks(CONFIG.game.ranks); } catch (e) { console.warn('game.ranks ignoriert:', e.message); }
 }
+// Max. Plätze pro Raum (2..63). Ungültige Werte -> 7 (klassische Regel).
+const MAX_PLAYERS = (() => {
+  const v = Number(CONFIG.game && CONFIG.game.maxPlayers);
+  if (Number.isInteger(v) && v >= 2 && v <= MAX_PLAYERS_LIMIT) return v;
+  console.warn(`game.maxPlayers ungültig (${CONFIG.game && CONFIG.game.maxPlayers}) – nutze 7.`);
+  return 7;
+})();
 const PORT = CONFIG.port || 3000;
 
 // ICE-Server für WebRTC-Voice aus der Konfiguration.
@@ -183,6 +193,7 @@ function lobbyView(room) {
     code: room.code,
     hostId: room.hostId,
     seats: room.seats.map(s => ({ id: s.id, name: s.name, bot: s.bot, connected: s.connected })),
+    maxPlayers: MAX_PLAYERS,
   };
 }
 
@@ -319,7 +330,7 @@ function handle(ws, m) {
       const room = rooms.get(String(m.code || '').toUpperCase());
       if (!room) return err(ws, 'Raum nicht gefunden.');
       if (room.game) return err(ws, 'Spiel läuft bereits – kein Beitritt möglich.');
-      if (room.seats.filter(s => !s.bot || true).length >= 7) return err(ws, 'Raum ist voll (max. 7).');
+      if (room.seats.length >= MAX_PLAYERS) return err(ws, `Raum ist voll (max. ${MAX_PLAYERS}).`);
       leaveCurrent(ws.clientId);
       let seat = seatOf(room, ws.clientId);
       let isNew = false;
@@ -339,7 +350,7 @@ function handle(ws, m) {
     case 'addBot': {
       const room = hostRoom(ws);
       if (room.game) throw new Error('Nur in der Lobby.');
-      if (room.seats.length >= 7) throw new Error('Max. 7 Plätze.');
+      if (room.seats.length >= MAX_PLAYERS) throw new Error(`Max. ${MAX_PLAYERS} Plätze.`);
       const n = room.seats.filter(s => s.bot).length + 1;
       room.seats.push({ id: `bot-${room.code}-${Date.now()}-${n}`, name: `Bot ${n}`, bot: true, connected: true });
       broadcast(room);

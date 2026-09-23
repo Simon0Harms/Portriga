@@ -124,7 +124,9 @@ function renderLobby(m){
     ul.appendChild(li);
   });
   $('lobby-hint').textContent = isHost
-    ? (m.seats.length<2 ? 'Warte auf Mitspieler oder füge Bots hinzu (2–7).' : 'Bereit – du kannst starten.')
+    ? (m.seats.length<2 ? `Warte auf Mitspieler oder füge Bots hinzu (2–${m.maxPlayers||7}).`
+       : m.seats.length>7 ? `Bereit – ${m.seats.length} Spieler: alternative Variante (max. ${Math.min(8,Math.floor(63/m.seats.length))} Karten pro Runde).`
+       : 'Bereit – du kannst starten.')
     : 'Warte auf den Host…';
 }
 $('btn-addbot').onclick = () => send({ type:'addBot' });
