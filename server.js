@@ -3,6 +3,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
+const QRCode = require('qrcode');
 const { WebSocketServer } = require('ws');
 const { Game, setRanks } = require('./game');
 const { botBid, botCardId } = require('./bots');
@@ -76,6 +77,20 @@ try {
 const sendIndex = (_req, res) => res.type('html').send(INDEX_HTML);
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+
+// QR-Code (SVG) für den Direktlink zum Raumbeitritt (Lobby).
+// Der Client übergibt den fertigen Link, da nur er die öffentliche URL
+// (inkl. Reverse-Proxy/Basis-Pfad) sicher kennt. Länge begrenzt.
+const qrHandler = (req, res) => {
+  const t = String(req.query.t || '');
+  if (!t || t.length > 512 || !/^https?:\/\//i.test(t)) return res.status(400).send('bad request');
+  QRCode.toString(t, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' }, (err, svg) => {
+    if (err) return res.status(500).send('qr error');
+    res.set('Cache-Control', 'public, max-age=86400').type('image/svg+xml').send(svg);
+  });
+};
+if (BASE) app.get(BASE + '/qr.svg', qrHandler);
+app.get('/qr.svg', qrHandler);
 
 // Statische Dateien und Index sowohl unter dem Basis-Pfad ALS AUCH unter Root
 // ausliefern – so funktioniert es, egal ob der Reverse-Proxy das Präfix strippt oder nicht.

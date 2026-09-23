@@ -11,6 +11,13 @@ if (!clientId) { clientId = 'c-' + Math.random().toString(36).slice(2) + Date.no
 let myName = localStorage.getItem('portriga_name') || '';
 if (myName) $('name').value = myName;
 
+// Direktlink: ?join=CODE -> Code vorbelegen und (bei bekanntem Namen) automatisch beitreten
+const joinParam = (new URLSearchParams(location.search).get('join') || '').trim().toUpperCase();
+if (/^[A-Z0-9]{4}$/.test(joinParam)) {
+  $('join-code').value = joinParam;
+  history.replaceState(null, '', location.pathname + location.hash);
+}
+
 let ws, wsReady = false, lastState = null, myId = clientId, hostId = null;
 
 function connect() {
@@ -87,12 +94,23 @@ $('btn-join').onclick = () => {
   if (code.length !== 4) return toast('Bitte 4-stelligen Code eingeben.');
   send({ type:'joinRoom', code, name: myName });
 };
+if (/^[A-Z0-9]{4}$/.test(joinParam)) {
+  if (myName) send({ type:'joinRoom', code: joinParam, name: myName });
+  else { $('name').focus(); toast('Namen eingeben und „Beitreten“ drücken.'); }
+}
 function saveName(){ myName = ($('name').value.trim() || 'Spieler').slice(0,20); localStorage.setItem('portriga_name', myName); }
 
 // ---------- Lobby ----------
 function renderLobby(m){
   show('lobby');
   $('lobby-code').textContent = m.code;
+  const link = joinLink(m.code);
+  if ($('lobby-link').href !== link) {
+    $('lobby-link').href = link;
+    $('lobby-link').textContent = link;
+    const base = (typeof window.__BASE__ === 'string') ? window.__BASE__ : '';
+    $('lobby-qr').src = `${base}/qr.svg?t=${encodeURIComponent(link)}`;
+  }
   const isHost = m.hostId === clientId;
   $('host-controls').classList.toggle('hidden', !isHost);
   const ul = $('seat-list'); ul.innerHTML = '';
@@ -113,6 +131,10 @@ $('btn-addbot').onclick = () => send({ type:'addBot' });
 $('btn-rmbot').onclick = () => send({ type:'removeBot' });
 $('btn-start').onclick = () => send({ type:'startGame' });
 $('btn-leave-lobby').onclick = () => send({ type:'leaveRoom' });
+function joinLink(code){
+  return `${location.origin}${location.pathname}?join=${encodeURIComponent(code)}`;
+}
+$('btn-copy-link').onclick = () => { navigator.clipboard?.writeText($('lobby-link').href); toast('Link kopiert.'); };
 $('btn-copy').onclick = () => { navigator.clipboard?.writeText($('lobby-code').textContent); toast('Code kopiert.'); };
 
 // ---------- Game ----------

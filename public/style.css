@@ -243,3 +243,8 @@ a.btn-link{display:inline-block;background:#173f2c;color:#eaf4ee;border:1px soli
   border-radius:8px;padding:.5em 1em;text-decoration:none;font-weight:600}
 a.btn-link:hover{background:#1f5138}
 a.btn-link.hdr-btn{padding:.3em .7em;font-size:.9rem}
+
+/* Lobby: Direktlink + QR-Code (#6) */
+.join-share{text-align:center;margin:.4em 0 .8em}
+.join-link{word-break:break-all;color:var(--gold)}
+.join-qr{display:block;margin:.5em auto 0;width:160px;height:160px;background:#fff;border-radius:6px;padding:4px}
