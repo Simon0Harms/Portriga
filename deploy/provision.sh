@@ -12,6 +12,8 @@ set -euo pipefail
 APP_DIR="/opt/portriga"
 SVC_USER="portriga"
 WANT_NGINX="${WANT_NGINX:-0}"
+WANT_COTURN="${WANT_COTURN:-0}"
+WANT_MATRIX="${WANT_MATRIX:-0}"
 GIT_URL="${GIT_URL:-}"
 USE_NODESOURCE="${USE_NODESOURCE:-0}"
 NODE_MAJOR="${NODE_MAJOR:-22}"
@@ -99,7 +101,7 @@ if [ "$WANT_COTURN" = "1" ]; then
   echo "   Und in $APP_DIR/config.json bzw. portriga.env die TURN-Zugangsdaten setzen."
 fi
 
-if [ "${WANT_MATRIX:-0}" = "1" ]; then
+if [ "$WANT_MATRIX" = "1" ]; then
   echo ">> Matrix-Bot für Benutzerkonten einrichten…"
   apt-get install -y python3 python3-pip libolm-dev
   pip install "matrix-nio[e2e]" --break-system-packages
