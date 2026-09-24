@@ -117,6 +117,31 @@ function wsSession(withCookie) {
     r = await req('/me/logout-all', {}); cookie = before;
     r = await req('/me'); assert.strictEqual(r.json.user, null);
 
+    // Konto löschen: Bestätigung per Matrix nötig, danach verlässt der Bot den Raum
+    cookie = ''; await sleep(5100);
+    r = await req('/register/start', { username: 'Loeschkandidat', password: 'geheim456' }); assert.strictEqual(r.status, 200);
+    const t3 = r.json.token; dm('@del:example.org', r.json.code, '!dm2:example.org'); await sleep(2600); outbox();
+    r = await req('/register/status?token=' + t3); assert.strictEqual(r.json.status, 'done');
+    r = await req('/me/delete', { password: 'falsch999' }); assert.strictEqual(r.status, 401);
+    const d = await wsSession(true); await sleep(200);
+    r = await req('/me/delete', { password: 'geheim456' }); assert.strictEqual(r.json.confirm, 'matrix'); assert.match(r.json.code, /^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    const delTok = r.json.token, delCode = r.json.code;
+    assert.ok(outbox().some(m => m.body.includes('löschen ' + delCode) && m.roomId === '!dm2:example.org' && !m.leave));
+    r = await req('/me/delete/status?token=' + delTok); assert.strictEqual(r.json.status, 'pending');
+    // fremde MXID kann nicht bestätigen, falscher Code löscht nicht
+    dm('@fremd:example.org', 'löschen ' + delCode); await sleep(2600); outbox();
+    dm('@del:example.org', 'löschen AAAA-BBBB', '!dm2:example.org'); await sleep(2600);
+    assert.ok(outbox().some(m => /stimmt nicht/.test(m.body)));
+    r = await req('/me'); assert.strictEqual(r.json.user.username, 'Loeschkandidat');
+    // richtiger Code von der verknüpften MXID
+    await sleep(3100); dm('@del:example.org', 'Loeschen ' + delCode.toLowerCase(), '!dm2:example.org'); await sleep(2600);
+    const bye = outbox(); assert.ok(bye.some(m => /gelöscht/.test(m.body) && m.leave === true && m.roomId === '!dm2:example.org'));
+    assert.ok(d.msgs.some(m => m.type === 'account' && m.user === null), 'WebSocket abgemeldet'); d.ws.close();
+    r = await req('/me/delete/status?token=' + delTok); assert.strictEqual(r.json.status, 'deleted');
+    r = await req('/me'); assert.strictEqual(r.json.user, null);
+    r = await req('/register/check?u=Loeschkandidat'); assert.strictEqual(r.json.available, true);
+    r = await req('/login', { login: '@del:example.org', password: 'geheim456' }); assert.strictEqual(r.status, 401);
+
     // Fremder Origin blockiert
     const x = await fetch(URL0 + '/api/account/login', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' }, body: '{}' });
     assert.strictEqual(x.status, 403);

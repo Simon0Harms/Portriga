@@ -227,6 +227,25 @@
         <div class="row"><button id="btn-set-pw" class="primary">Passwort speichern</button></div>
         <p id="set-msg" class="msg"></p>
         <button id="btn-logout-all" class="link">Auf allen Geräten abmelden</button>
+
+        <div class="danger-zone">
+          <h3>Konto löschen</h3>
+          <div id="del-step1">
+            <p class="hint">Das Konto wird endgültig gelöscht. Ist es mit Matrix verknüpft, musst du die Löschung per Direktnachricht an den Bot bestätigen; danach verlässt der Bot den Chat.</p>
+            <label id="del-pw-label">Passwort zur Bestätigung
+              <input id="del-pw" type="password" autocomplete="current-password" />
+            </label>
+            <div class="row"><button id="btn-del-start" class="danger">Konto löschen…</button></div>
+          </div>
+          <div id="del-step2" class="hidden">
+            <p>Schreibe <a id="del-bot" target="_blank" rel="noopener"></a> per Matrix-Direktnachricht:</p>
+            <div class="reg-code-box"><span id="del-cmd" class="reg-code"></span> <button id="btn-copy-del" class="link">kopieren</button></div>
+            <p class="hint">Der Bot hat dir den Befehl auch direkt geschickt. Gültig noch <span id="del-timer"></span>.</p>
+            <p id="del-wait" class="msg"></p>
+            <div class="row"><button id="btn-del-cancel">Abbrechen</button></div>
+          </div>
+          <p id="del-msg" class="msg"></p>
+        </div>
       </div>
     </div>
   </div>

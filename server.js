@@ -110,6 +110,17 @@ const accounts = createAccounts({
   sessionTtlMs: Math.max(1, Number(AC.sessionDays) || 30) * 24 * 3600 * 1000,
   cookieSecure: AC.cookieSecure !== false,
   basePath: BASE,
+  // Gelöschtes Konto: offene Verbindungen sofort abmelden (Sitze bleiben als Gast bestehen).
+  onUserDeleted: (id) => {
+    for (const c of wss.clients) {
+      if (c.account && c.account.id === id) { c.account = null; send(c, { type: 'account', user: null }); }
+    }
+    for (const room of rooms.values()) {
+      let hit = false;
+      for (const s of room.seats) if (s.accountId === id) { s.accountId = null; hit = true; }
+      if (hit) broadcast(room);
+    }
+  },
 });
 accounts.mount(app, express, BASE);
 accounts.start();

@@ -105,6 +105,13 @@ fest an den Benutzernamen gebunden (✓ in der Lobby); Gäste können registrier
 einmalig). Alternativ dem Bot `login` schreiben. Passwort lässt sich im Konto-Dialog setzen,
 ändern oder entfernen; „Auf allen Geräten abmelden“ invalidiert alle Sitzungen.
 
+**Konto löschen:** im Konto-Dialog unter „Konto löschen“ (bei gesetztem Passwort mit
+Passwortabfrage). Ist das Konto mit Matrix verknüpft, schickt der Bot einen Bestätigungsbefehl
+per DM (`löschen XXXX-XXXX`, 10 Min. gültig, wird auch in der App angezeigt). Erst wenn diese
+Nachricht **von der verknüpften MXID** eingeht, wird das Konto endgültig gelöscht; der Bot
+verabschiedet sich und **verlässt den DM-Raum** (`room_leave` + `room_forget`). Offene Sitzungen
+und Login-Links werden ungültig, der Benutzername ist wieder frei.
+
 **Architektur** (Spool-Prinzip wie im KKk58-Sidecar, die Node-App bleibt ohne Matrix-Abhängigkeit):
 ```
 Browser ──HTTP/WS──▶ server.js + accounts.js ──▶ data/matrix-outbox/ ──▶ portriga_matrix_bot.py ──▶ Matrix

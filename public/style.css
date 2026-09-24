@@ -273,3 +273,8 @@ a.btn-link.hdr-btn{padding:.3em .7em;font-size:.9rem}
 #reg-bot{color:var(--gold);word-break:break-all}
 .msg.ok{color:#8f8}.msg.bad{color:#ff9aa8}
 .modal .row button{flex:1 1 auto}
+/* Konto löschen */
+.danger-zone{margin-top:1.2em;padding-top:.8em;border-top:1px solid rgba(255,120,140,.35)}
+.danger-zone h3{margin:0 0 .4em;font-size:1rem;color:#ff9aa8}
+button.danger{background:#8a2333;color:#fff;border-color:#b83a4d;font-weight:700}
+button.danger:hover{filter:brightness(1.1)}

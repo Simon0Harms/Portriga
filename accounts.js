@@ -14,9 +14,15 @@
  *
  * Anmeldung: Benutzername/MXID + Passwort ODER Login-Link per Matrix-DM.
  *
+ * Konto löschen: bei mit Matrix verknüpften Konten muss die Löschung per
+ *   Matrix-DM bestätigt werden („löschen XXXX-XXXX“, Absender = verknüpfte MXID).
+ *   Danach verabschiedet sich der Bot und verlässt den DM-Raum (Outbox-Flag
+ *   ``leave``). Konten ohne Matrix-Verknüpfung werden nach Passwortprüfung
+ *   sofort gelöscht.
+ *
  * Kommunikation mit dem Sidecar ausschließlich über zwei Spool-Verzeichnisse
  * (je Auftrag eine Datei, atomar via tmp+rename) – wie in KKk58:
- *   outbox/  App -> Sidecar  {id, roomId, body, createdAt}
+ *   outbox/  App -> Sidecar  {id, roomId, body, createdAt, leave?}
  *   inbox/   Sidecar -> App  {id, eventId, roomId, sender, body, ts}
  * ------------------------------------------------------------------------- */
 const fs = require('fs');
@@ -29,6 +35,8 @@ const MXID_RE = /^@[^\s:]+:[^\s:]+$/;
 // Code-Alphabet ohne verwechselbare Zeichen (0/O, 1/I/L)
 const CODE_ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const CODE_RE = /PR-?([A-Z2-9]{4})-?([A-Z2-9]{4})/i;
+// Bestätigung der Kontolöschung per DM: „löschen ABCD-EFGH“ (auch „loeschen“, „!löschen“, „delete“)
+const DELETE_RE = /^\s*!?(?:l(?:ö|oe)schen|delete)(?:\s+(?:DEL-?)?([A-Z2-9]{4})-?([A-Z2-9]{4}))?\s*$/i;
 
 function createAccounts(opts) {
   const o = Object.assign({
@@ -42,6 +50,8 @@ function createAccounts(opts) {
     cookieName: 'portriga_sess',
     basePath: '',
     inboxPollMs: 2000,
+    deleteTtlMs: 10 * 60 * 1000,
+    onUserDeleted: null, // (userId) => void – z. B. offene WebSockets abmelden
     log: (...a) => console.log('[accounts]', ...a),
   }, opts || {});
 
@@ -60,7 +70,7 @@ function createAccounts(opts) {
   const eqHex = (a, b) => { const x = Buffer.from(String(a), 'hex'), y = Buffer.from(String(b), 'hex'); return x.length === y.length && x.length > 0 && crypto.timingSafeEqual(x, y); };
 
   // ---- Persistenz ----
-  let db = { users: [], pending: [], magic: [], nextId: 1 };
+  let db = { users: [], pending: [], magic: [], deletions: [], nextId: 1 };
   try { db = Object.assign(db, JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))); } catch (e) { if (e.code !== 'ENOENT') o.log('accounts.json unlesbar:', e.message); }
   function save() {
     const tmp = DB_FILE + '.tmp';
@@ -69,10 +79,12 @@ function createAccounts(opts) {
   }
   function prune() {
     const now = Date.now();
-    const n1 = db.pending.length, n2 = db.magic.length;
+    const n1 = db.pending.length, n2 = db.magic.length, n3 = db.deletions.length;
     db.pending = db.pending.filter(p => p.expires > now || (p.doneUserId && p.expires + 3600e3 > now));
     db.magic = db.magic.filter(m => !m.used && m.expires > now);
-    return n1 !== db.pending.length || n2 !== db.magic.length;
+    // erledigte Löschungen noch 1 h behalten, damit der Browser den Status abholen kann
+    db.deletions = db.deletions.filter(d => d.expires > now || (d.done && d.expires + 3600e3 > now));
+    return n1 !== db.pending.length || n2 !== db.magic.length || n3 !== db.deletions.length;
   }
 
   // ---- Passwörter (scrypt) ----
@@ -147,11 +159,12 @@ function createAccounts(opts) {
   function publicUser(u) { return u ? { id: u.id, username: u.username, mxid: u.mxid, hasPassword: !!u.hash, createdAt: u.createdAt } : null; }
 
   // ---- Outbox (App -> Sidecar) ----
-  function enqueue(roomId, body) {
+  function enqueue(roomId, body, extra) {
     try {
       const id = Date.now().toString(36) + '-' + crypto.randomBytes(8).toString('hex');
       const tmp = path.join(OUTBOX, '.' + id + '.tmp');
-      fs.writeFileSync(tmp, JSON.stringify({ id, roomId: String(roomId), body: String(body), createdAt: Date.now() }), { mode: 0o600 });
+      const job = Object.assign({ id, roomId: String(roomId), body: String(body), createdAt: Date.now() }, extra || {});
+      fs.writeFileSync(tmp, JSON.stringify(job), { mode: 0o600 });
       fs.renameSync(tmp, path.join(OUTBOX, id + '.json'));
       return true;
     } catch (e) { o.log('Outbox-Fehler:', e.message); return false; }
@@ -168,6 +181,25 @@ function createAccounts(opts) {
     if (!u.dmRoomId) return false;
     const m = createMagic(u);
     return enqueue(u.dmRoomId, `🃏 Portriga – Anmeldung\nDein Login-Link (${Math.round(o.magicTtlMs / 60000)} Minuten gültig, einmal verwendbar):\n${base}/?mlogin=${m.token}\nWenn du das nicht angefordert hast, ignoriere diese Nachricht.`);
+  }
+
+  // ---- Konto löschen ----
+  function deleteUser(u) {
+    db.users = db.users.filter(x => x.id !== u.id);
+    db.magic = db.magic.filter(m => m.userId !== u.id);
+    db.pending = db.pending.filter(p => p.doneUserId !== u.id);
+    for (const d of db.deletions) if (d.userId === u.id && !d.done) { d.done = true; d.codeHash = null; }
+    save();
+    o.log('Konto gelöscht:', u.username, u.mxid || '(ohne Matrix)');
+    if (typeof o.onUserDeleted === 'function') { try { o.onUserDeleted(u.id); } catch (e) { o.log('onUserDeleted:', e.message); } }
+  }
+  function startDeletion(u) {
+    db.deletions = db.deletions.filter(d => d.userId !== u.id || d.done);
+    const code = newCode().slice(3); // XXXX-XXXX
+    const d = { token: crypto.randomBytes(24).toString('base64url'), userId: u.id, codeHash: hmac('del:' + u.id + ':' + code.replace('-', '')), expires: Date.now() + o.deleteTtlMs, done: false, createdAt: Date.now() };
+    db.deletions.push(d); save();
+    enqueue(u.dmRoomId, `🃏 Portriga – Konto löschen\nFür dein Konto „${u.username}“ wurde die Löschung angefordert.\nZum Bestätigen antworte hier mit:\n\nlöschen ${code}\n\n(${Math.round(o.deleteTtlMs / 60000)} Minuten gültig.) Das Konto wird endgültig gelöscht und ich verlasse danach diesen Chat.\nWenn du das nicht angefordert hast, ignoriere diese Nachricht und ändere ggf. dein Passwort.`);
+    return { d, code };
   }
 
   // ---- Inbox (Sidecar -> App) ----
@@ -200,6 +232,24 @@ function createAccounts(opts) {
       o.log('Konto angelegt:', u.username, u.mxid);
       enqueue(roomId, `🃏 Portriga\nWillkommen, ${u.username}! Dein Konto ist aktiv und mit ${sender} verknüpft.\nDu kannst dich künftig per Login-Link über diesen Chat anmelden${u.hash ? ' oder mit deinem Passwort' : ''}.\nTipp: Schreib mir „login“, um jederzeit einen Login-Link zu bekommen.`);
       return 'registered';
+    }
+    const dm = body.match(DELETE_RE);
+    if (dm) {
+      const u = userByMxid(sender);
+      if (!u) { enqueue(roomId, '🃏 Portriga\nZu deiner Matrix-ID gibt es kein Konto.'); return 'nouser'; }
+      const now = Date.now();
+      const d = db.deletions.find(x => x.userId === u.id && !x.done && x.expires > now);
+      if (!d) { enqueue(roomId, '🃏 Portriga\nEs liegt keine offene Löschanfrage vor. Starte sie in der App unter „Konto“ → „Konto löschen“.'); return 'nodelete'; }
+      if (!dm[1]) { enqueue(roomId, '🃏 Portriga\nBitte den Bestätigungscode mitschicken, z. B.: löschen ABCD-EFGH'); return 'delnocode'; }
+      if (rateHit('delcode:' + u.id, 3000)) return 'rate';
+      if (!eqHex(d.codeHash, hmac('del:' + u.id + ':' + (dm[1] + dm[2]).toUpperCase()))) { enqueue(roomId, '🃏 Portriga\nDer Bestätigungscode stimmt nicht. Das Konto wurde nicht gelöscht.'); return 'delbadcode'; }
+      const leaveRoom = u.dmRoomId || roomId;
+      deleteUser(u);
+      // Raum nur verlassen, wenn ihn kein anderes Konto als DM nutzt
+      const shared = db.users.some(x => x.dmRoomId === leaveRoom || x.dmRoomId === roomId);
+      enqueue(roomId, `🃏 Portriga\nDein Konto „${u.username}“ wurde gelöscht. Tschüss und danke fürs Spielen!${shared ? '' : '\nIch verlasse jetzt diesen Chat.'}`, shared ? null : { leave: true });
+      if (!shared && leaveRoom !== roomId) enqueue(leaveRoom, '🃏 Portriga\nKonto gelöscht – ich verlasse diesen Chat.', { leave: true });
+      return 'deleted';
     }
     if (/^\s*!?(login|anmelden)\s*$/i.test(body)) {
       const u = userByMxid(sender);
@@ -336,6 +386,15 @@ function createAccounts(opts) {
 
     r.post('/logout', (req, res) => { clearSession(res); res.json({ ok: true }); });
 
+    // Status einer Löschanfrage – ohne Login-Pflicht, da die Session nach der Löschung ungültig ist.
+    r.get('/me/delete/status', (req, res) => {
+      const d = db.deletions.find(x => x.token === String(req.query.token || ''));
+      if (!d) return res.json({ status: 'expired' });
+      if (d.done) { clearSession(res); return res.json({ status: 'deleted' }); }
+      if (!(d.expires > Date.now())) return res.json({ status: 'expired' });
+      res.json({ status: 'pending', expires: d.expires });
+    });
+
     // Ab hier: angemeldet
     r.use((req, res, next) => { const u = userFromReq(req); if (!u) return res.status(401).json({ error: 'Nicht angemeldet.' }); req.user = u; next(); });
 
@@ -347,6 +406,28 @@ function createAccounts(opts) {
       if (np) Object.assign(u, hashPw(np)); else { u.hash = null; u.salt = null; }
       save();
       res.json({ ok: true, user: publicUser(u) });
+    });
+
+    // Konto löschen. Mit Matrix-Verknüpfung: Bestätigung per DM nötig; sonst sofort.
+    r.post('/me/delete', (req, res) => {
+      const u = req.user;
+      const ip = ipOf(req);
+      if (throttled(ip)) return res.status(429).json({ error: 'Zu viele Versuche, bitte später erneut.' });
+      if (u.hash && !verifyPw(u, (req.body && req.body.password) || '')) { badTry(ip); return res.status(401).json({ error: 'Passwort falsch.' }); }
+      if (u.mxid) {
+        if (!u.dmRoomId) return res.status(409).json({ error: 'Kein Matrix-Chat mit dem Bot bekannt. Schreib dem Bot zuerst „login“ und versuche es dann erneut.' });
+        if (rateHit('del:' + u.id, 10000)) return res.status(429).json({ error: 'Bitte kurz warten.' });
+        const { d, code } = startDeletion(u);
+        return res.json({ ok: true, confirm: 'matrix', token: d.token, code, botMxid: o.botMxid, matrixTo: 'https://matrix.to/#/' + o.botMxid, expires: d.expires });
+      }
+      deleteUser(u); clearSession(res);
+      res.json({ ok: true, deleted: true });
+    });
+    r.post('/me/delete/cancel', (req, res) => {
+      const n = db.deletions.length;
+      db.deletions = db.deletions.filter(d => d.userId !== req.user.id || d.done);
+      if (n !== db.deletions.length) save();
+      res.json({ ok: true });
     });
 
     // Alle Sitzungen beenden (inkl. dieser)
@@ -374,4 +455,4 @@ function createAccounts(opts) {
   };
 }
 
-module.exports = { createAccounts, USERNAME_RE, CODE_RE };
+module.exports = { createAccounts, USERNAME_RE, CODE_RE, DELETE_RE };

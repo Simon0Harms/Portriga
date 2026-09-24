@@ -620,6 +620,7 @@ connect();
 const API = ((typeof window.__BASE__ === 'string') ? window.__BASE__ : '') + '/api/account';
 let account = null, acctCfg = { enabled:false };
 let regToken = null, regExpires = 0, regPoll = null, regTick = null;
+let delToken = null, delExpires = 0, delPoll = null, delTick = null;
 
 async function api(pathname, body){
   const opt = body === undefined ? {} : { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) };
@@ -651,6 +652,9 @@ function openAcct(view){
     $('set-cur-label').classList.toggle('hidden', !account.hasPassword);
     $('set-new-caption').textContent = account.hasPassword ? 'Neues Passwort' : 'Passwort setzen';
     $('set-cur').value = ''; $('set-new').value = ''; setMsg('set-msg','');
+    $('del-pw-label').classList.toggle('hidden', !account.hasPassword);
+    $('del-pw').value = ''; setMsg('del-msg','');
+    if (!delToken) showDelStep(1);
   }
 }
 function closeAcct(){ $('acct-modal').classList.add('hidden'); }
@@ -761,6 +765,51 @@ $('btn-logout-all').onclick = async () => {
   if (!confirm('Auf allen Geräten abmelden?')) return;
   try { await api('/me/logout-all', {}); } catch(_) {}
   setAccount(null); closeAcct(); reconnectWs(); toast('Überall abgemeldet.');
+};
+
+// --- Konto löschen (bei Matrix-Verknüpfung Bestätigung per DM) ---
+function showDelStep(n){ $('del-step1').classList.toggle('hidden', n !== 1); $('del-step2').classList.toggle('hidden', n !== 2); }
+function stopDelPoll(){ clearInterval(delPoll); clearInterval(delTick); delPoll = delTick = null; }
+function resetDel(){ stopDelPoll(); delToken = null; showDelStep(1); }
+function accountDeleted(){
+  resetDel(); setAccount(null); closeAcct(); reconnectWs();
+  toast('Dein Konto wurde gelöscht.');
+}
+function startDelPoll(){
+  stopDelPoll();
+  const tick = () => {
+    const s = Math.max(0, Math.round((delExpires - Date.now()) / 1000));
+    $('del-timer').textContent = Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+  };
+  tick(); delTick = setInterval(tick, 1000);
+  delPoll = setInterval(async () => {
+    if (!delToken) return stopDelPoll();
+    try {
+      const j = await api('/me/delete/status?token=' + encodeURIComponent(delToken));
+      if (j.status === 'deleted') accountDeleted();
+      else if (j.status === 'expired') { resetDel(); setMsg('del-msg', '✗ Löschanfrage abgelaufen – das Konto besteht weiter.', 'bad'); }
+    } catch(_) { /* vorübergehend – weiter pollen */ }
+  }, 2500);
+}
+$('btn-del-start').onclick = async () => {
+  if (!account) return;
+  const linked = !!account.mxid;
+  if (!confirm('Konto „' + account.username + '“ wirklich endgültig löschen?' + (linked ? '\nDie Löschung muss anschließend per Matrix bestätigt werden.' : ''))) return;
+  try {
+    const j = await api('/me/delete', { password: $('del-pw').value });
+    $('del-pw').value = ''; setMsg('del-msg', '');
+    if (j.deleted) return accountDeleted();
+    delToken = j.token; delExpires = j.expires;
+    $('del-cmd').textContent = 'löschen ' + j.code;
+    $('del-bot').textContent = j.botMxid; $('del-bot').href = j.matrixTo;
+    setMsg('del-wait', '⏳ Warte auf deine Bestätigung per Matrix…');
+    showDelStep(2); startDelPoll();
+  } catch(e){ setMsg('del-msg', e.message, 'bad'); }
+};
+$('btn-copy-del').onclick = () => copyText($('del-cmd').textContent);
+$('btn-del-cancel').onclick = async () => {
+  resetDel();
+  try { await api('/me/delete/cancel', {}); setMsg('del-msg', 'Löschung abgebrochen.', 'ok'); } catch(e){ setMsg('del-msg', e.message, 'bad'); }
 };
 
 // --- Start: Konfiguration, Login-Link (?mlogin=…) ---

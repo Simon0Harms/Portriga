@@ -12,6 +12,9 @@ Login-Links. Abgeleitet vom KKk58-Sidecar (gleiches Spool-Prinzip).
     Der Absender (``sender``) ist vom Homeserver authentifiziert.
   * Sendet von der Node-App in die OUTBOX gelegte Nachrichten
     (Bestätigungen, Login-Links).
+  * Aufträge mit ``"leave": true`` (Konto gelöscht): nach dem Senden – bzw.
+    wenn das Senden endgültig scheitert – verlässt der Bot den Raum und
+    vergisst ihn (``room_leave`` + ``room_forget``).
 
 Die Node-App bleibt dadurch ohne Matrix-/E2EE-Abhängigkeiten.
 
@@ -226,6 +229,26 @@ class PortrigaBot:
         if not isinstance(resp, RoomSendResponse):
             raise RuntimeError("room_send: " + repr(resp))
 
+    async def _leave_room(self, rid):
+        try:
+            resp = await self.client.room_leave(rid)
+            if type(resp).__name__.endswith("Error"):
+                raise RuntimeError(repr(resp))
+            try:
+                await self.client.room_forget(rid)
+            except Exception as e:  # Vergessen ist optional
+                self.log("room_forget fehlgeschlagen (ignoriert):", rid, repr(e))
+            self.log("Raum verlassen (Konto gelöscht):", rid)
+        except Exception as e:
+            self.log("Raum verlassen fehlgeschlagen:", rid, repr(e))
+
+    async def _finish(self, fpath, mid, msg):
+        """Auftrag abschließen: Datei entfernen und ggf. Raum verlassen."""
+        self._safe_remove(fpath)
+        self._outbox_attempts.pop(mid, None)
+        if msg.get("leave") and msg.get("roomId"):
+            await self._leave_room(msg["roomId"])
+
     @staticmethod
     def _safe_remove(p):
         try:
@@ -257,26 +280,22 @@ class PortrigaBot:
             age = time.time() - (msg.get("createdAt", 0) / 1000)
             room, body = msg.get("roomId"), msg.get("body")
             if age > self.cfg.outbox_ttl or not room or not body:
-                self._safe_remove(fpath)
-                self._outbox_attempts.pop(mid, None)
+                await self._finish(fpath, mid, msg)
                 continue
             try:
                 await self._send_to_room(room, body)
-                self._safe_remove(fpath)
-                self._outbox_attempts.pop(mid, None)
                 self.log("Outbox: gesendet an", room)
+                await self._finish(fpath, mid, msg)
             except _PlaintextRefused:
                 self.log("Outbox: Raum", room, "ist NICHT verschlüsselt – nicht gesendet "
                          "(PORTRIGA_REQUIRE_ENCRYPTION=1). Auftrag verworfen.")
-                self._safe_remove(fpath)
-                self._outbox_attempts.pop(mid, None)
+                await self._finish(fpath, mid, msg)
             except Exception as e:
                 n = self._outbox_attempts.get(mid, 0) + 1
                 self._outbox_attempts[mid] = n
                 self.log("Outbox: Senden fehlgeschlagen (Versuch %d) an %s: %r" % (n, room, e))
                 if n >= self.cfg.outbox_max_attempts:
-                    self._safe_remove(fpath)
-                    self._outbox_attempts.pop(mid, None)
+                    await self._finish(fpath, mid, msg)
 
     # ---- Ablauf ----
     async def connect(self):
