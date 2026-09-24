@@ -391,6 +391,12 @@
       if (!mem) { mem = {}; attrMem.set(el, mem); }
       mem[a] = { de, out };
     }
+    // Kartenbilder: englisch -> J/Q-Varianten aus cards/en/
+    if (el.tagName === 'IMG' && el.dataset && el.dataset.card) {
+      const key = el.dataset.card;
+      const src = (lang === 'en' && /-[BD]$/.test(key) ? 'cards/en/' : 'cards/') + key + '.svg';
+      if (el.getAttribute('src') !== src) el.setAttribute('src', src);
+    }
     // Regel-Links auf die passende Sprachversion umbiegen
     if (el.tagName === 'A') {
       const href = el.getAttribute('href');

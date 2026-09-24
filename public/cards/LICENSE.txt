@@ -1,0 +1,5 @@
+Kartenbilder: Vector-Playing-Cards (https://github.com/notpeter/Vector-Playing-Cards),
+basierend auf vector-playing-cards von Byron Knoll. Public Domain bzw. WTFPL.
+Anpassung für Portriga: deutsche Eckindizes (J -> B = Bube, Q -> D = Dame, Index-Text ersetzt),
+Nur Ass, König, Dame, Bube. Dateinamen <farbe>-<rang>.svg, mit svgo verkleinert. Runder Kartenrahmen entfernt (rechteckig).
+Englische Varianten (J/Q) in en/.
