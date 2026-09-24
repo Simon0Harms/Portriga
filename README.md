@@ -45,13 +45,14 @@ game.js            Regel-Engine (rein, testbar)
 bots.js            simpler Platzhalter-Bot
 server.js          Express + WebSocket, Räume, Bot-Steuerung, Reconnect
 accounts.js        Benutzerkonten: Registrierung per Matrix-DM, Login, Sessions
+announce.js        Ankündigung neuer öffentlicher/Ranglisten-Spiele im Matrix-Raum
 ranking.js         Rangliste für Ranglisten-Räume (data/ranking.json)
 admins.js          Admin-Rolle (data/admins.json), admin-cli.js = Verwaltung per Terminal
 config.js          Laden der Konfiguration (config.json + ENV)
 public/            Frontend (index.html, style.css, app.js) + regeln.html (eigenständige Regelseite)
 test/simulate.js   kopflose Vollspiel-Simulation (npm test)
 deploy/            Proxmox-LXC + systemd + nginx + coturn/ENV (Voice)
-deploy/matrix/     Matrix-Bot (Sidecar) für Registrierung und Login-Links
+deploy/matrix/     Matrix-Bot (Sidecar) für Registrierung, Login-Links und Spiel-Ankündigungen
 ```
 
 ## Spieler kicken & Admin-Rolle
@@ -250,6 +251,34 @@ Aktualisieren: neue Dateien nach `/opt/portriga` bringen, dann
 Der State liegt nur im RAM – ein Neustart beendet laufende Spiele. Für öffentlichen Betrieb
 `nginx-portriga.conf` um ein Zertifikat erweitern (certbot/ACME) und `listen 443 ssl;` ergänzen.
 
+## Ankündigungsraum auf Matrix (neue Spiele)
+Optional postet der Matrix-Bot jedes neu eröffnete **öffentliche** und **Ranglisten**-Spiel in einen
+öffentlichen Matrix-Raum – mit Raumcode, Ersteller, Belegung und Direktlink (`?join=CODE`). Auch ein
+privater Raum, der in der Lobby auf „Öffentlich“/„Rangliste“ umgestellt wird, wird angekündigt;
+jeder Raum aber nur einmal. Private Räume erscheinen nie.
+
+Einrichtung:
+1. In Matrix einen **öffentlichen, unverschlüsselten** Raum anlegen (z. B. `#portriga-spiele:example.org`),
+   Beitritt für alle erlauben, den Bot-Account einladen oder beitreten lassen und ihm Schreibrecht geben.
+   Empfehlung: Bot ohne Moderator-/Admin-Rechte (dann kann er kein `@room` auslösen); Spielernamen werden
+   zusätzlich entschärft.
+2. Node-App: `announce.room` in `config.json` bzw. `PORTRIGA_ANNOUNCE_ROOM` in `portriga.env` setzen
+   (Raum-ID `!…:server` oder Alias `#…:server`). `accounts.publicUrl` sollte gesetzt sein, sonst enthält
+   die Ankündigung nur den Raumcode statt eines Links.
+3. Sidecar: denselben Wert als `PORTRIGA_ANNOUNCE_ROOM` in `portriga-matrix.env` eintragen.
+4. `systemctl restart portriga portriga-matrix`
+
+Sicherheit: Der Sidecar sendet unverschlüsselt **ausschließlich** Aufträge mit `"announce": true` und
+nur in genau diesen konfigurierten Raum (`m.notice`). Alle Konto-Nachrichten (Login-Links, Codes) bleiben
+bei `PORTRIGA_REQUIRE_ENCRYPTION=1` auf verschlüsselte DMs beschränkt und werden nie in den Ankündigungsraum
+geschickt. Nachrichten und Austritte im Ankündigungsraum werden ignoriert (keine Befehle aus der Öffentlichkeit).
+Spam-Schutz: je Ersteller (Konto bzw. IP) max. eine Ankündigung pro `announce.perCreatorSec` (Standard 120 s),
+insgesamt max. `announce.maxPerHour` (Standard 30).
+
+Werbung für den Raum: Ist der Raum konfiguriert, zeigt die App auf dem Startbildschirm und in der Lobby einen
+Hinweis mit Link (`announce.link`, Standard `https://matrix.to/#/<Raum>`), und die Willkommensnachricht nach
+der Registrierung nennt den Raum. `GET /api/announce` liefert `{ enabled, room, link }`.
+
 ## Voice-Chat (WebRTC-Mesh)
 
 Sprach-Chat läuft als **WebRTC-Mesh** (jeder mit jedem), passend für 2–7 Spieler. Der
@@ -340,13 +369,14 @@ game.js            rules engine (pure, testable)
 bots.js            simple placeholder bot
 server.js          Express + WebSocket, rooms, bot control, reconnect
 accounts.js        user accounts: registration via Matrix DM, login, sessions
+announce.js        announcement of new public/ranked games in the Matrix room
 ranking.js         leaderboard for ranked rooms (data/ranking.json)
 admins.js          admin role (data/admins.json), admin-cli.js = management via terminal
 config.js          configuration loading (config.json + ENV)
 public/            frontend (index.html, style.css, app.js) + regeln.html (standalone rules page)
 test/simulate.js   headless full-game simulation (npm test)
 deploy/            Proxmox LXC + systemd + nginx + coturn/ENV (voice)
-deploy/matrix/     Matrix bot (sidecar) for registration and login links
+deploy/matrix/     Matrix bot (sidecar) for registration, login links and game announcements
 ```
 
 ## Kicking players & admin role
@@ -544,6 +574,31 @@ Updating: bring the new files to `/opt/portriga`, then
 ### HTTPS
 State lives in RAM only – a restart ends running games. For public operation,
 extend `nginx-portriga.conf` with a certificate (certbot/ACME) and add `listen 443 ssl;`.
+
+## Announcement room on Matrix (new games)
+Optionally the Matrix bot posts every newly opened **public** and **ranked** game to a public Matrix room –
+with room code, creator, seats taken and a direct link (`?join=CODE`). A private room switched to
+"Public"/"Ranked" in the lobby is announced too, but each room only once. Private rooms never appear.
+
+Setup:
+1. Create a **public, unencrypted** Matrix room (e.g. `#portriga-spiele:example.org`), allow anyone to join,
+   invite the bot account and give it permission to post. Recommended: no moderator/admin rights for the bot
+   (so it cannot trigger `@room`); player names are sanitised as well.
+2. Node app: set `announce.room` in `config.json` or `PORTRIGA_ANNOUNCE_ROOM` in `portriga.env`
+   (room ID `!…:server` or alias `#…:server`). `accounts.publicUrl` should be set, otherwise the
+   announcement only contains the room code instead of a link.
+3. Sidecar: put the same value into `PORTRIGA_ANNOUNCE_ROOM` in `portriga-matrix.env`.
+4. `systemctl restart portriga portriga-matrix`
+
+Security: the sidecar sends unencrypted **only** jobs marked `"announce": true` and only to exactly this
+configured room (`m.notice`). All account messages (login links, codes) stay restricted to encrypted DMs with
+`PORTRIGA_REQUIRE_ENCRYPTION=1` and are never sent to the announcement room. Messages and leaves in the
+announcement room are ignored (no commands from the public). Spam protection: per creator (account or IP) at
+most one announcement per `announce.perCreatorSec` (default 120 s), at most `announce.maxPerHour` overall (default 30).
+
+Promoting the room: once configured, the app shows a note with a link on the start screen and in the lobby
+(`announce.link`, default `https://matrix.to/#/<room>`), and the welcome message after registration mentions
+the room. `GET /api/announce` returns `{ enabled, room, link }`.
 
 ## Voice chat (WebRTC mesh)
 

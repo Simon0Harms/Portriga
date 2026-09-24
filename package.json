@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node server.js",
     "admin": "node admin-cli.js",
-    "test": "node test/simulate.js && node test/accounts.test.js && node test/ranking.test.js && node test/admins.test.js"
+    "test": "node test/simulate.js && node test/accounts.test.js && node test/ranking.test.js && node test/admins.test.js && node test/announce.test.js"
   },
   "engines": {
     "node": ">=18"

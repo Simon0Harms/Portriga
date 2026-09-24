@@ -10,6 +10,7 @@ const { botBid, botCardId } = require('./bots');
 const { createAccounts } = require('./accounts');
 const { createRanking } = require('./ranking');
 const { createAdmins } = require('./admins');
+const { createAnnouncer } = require('./announce');
 
 // ---- Zentrale Konfiguration (config.js) ----
 const { loadConfig, dataDirOf } = require('./config');
@@ -47,6 +48,29 @@ try {
 } catch (e) { console.error('index.html nicht lesbar:', e.message); }
 const sendIndex = (_req, res) => res.type('html').send(INDEX_HTML);
 
+// ---- Ankündigungsraum auf Matrix (neue öffentliche/Ranglisten-Spiele, siehe announce.js) ----
+const ANN = CONFIG.announce || {};
+const announcer = createAnnouncer({
+  room: ANN.room, link: ANN.link,
+  outboxDir: path.join(dataDirOf(CONFIG), 'matrix-outbox'),
+  publicUrl: String((CONFIG.accounts || {}).publicUrl || '').trim(),
+  perCreatorSec: Math.max(0, Number(ANN.perCreatorSec) || 0),
+  maxPerHour: Math.max(1, Number(ANN.maxPerHour) || 30),
+});
+if (announcer.enabled) console.log('Ankündigungen neuer Spiele in', announcer.room);
+const announceInfo = (_req, res) => res.json({ enabled: announcer.enabled, room: announcer.room || null, link: announcer.link || null });
+if (BASE) app.get(BASE + '/api/announce', announceInfo);
+app.get('/api/announce', announceInfo);
+// Raum einmalig ankündigen, sobald er öffentlich/Rangliste ist.
+function announceRoom(room, ws) {
+  if (room.announced || room.mode === 'private') return;
+  const host = seatOf(room, room.hostId);
+  const ok = announcer.announce({ code: room.code, mode: room.mode, host: host ? host.name : '?',
+    players: room.seats.length, maxPlayers: MAX_PLAYERS,
+    creatorKey: ws.account ? 'acc:' + ws.account.id : 'ip:' + (ws.ip || '') });
+  if (ok) { room.announced = true; systemChat(room, 'Dieses Spiel wurde im Matrix-Raum angekündigt.'); }
+}
+
 // ---- Benutzerkonten (Registrierung per Matrix-DM, siehe accounts.js) ----
 const AC = CONFIG.accounts || {};
 const accounts = createAccounts({
@@ -57,6 +81,7 @@ const accounts = createAccounts({
   sessionTtlMs: Math.max(1, Number(AC.sessionDays) || 30) * 24 * 3600 * 1000,
   cookieSecure: AC.cookieSecure !== false,
   basePath: BASE,
+  announceRoom: announcer.room, announceLink: announcer.link,
   // Gelöschtes Konto: offene Verbindungen sofort abmelden (Sitze bleiben als Gast bestehen).
   onUserDeleted: (id) => {
     for (const c of wss.clients) {
@@ -583,6 +608,7 @@ wss.on('connection', (ws, req) => {
   // Angemeldetes Konto aus dem Session-Cookie (Handshake). Nach Login/Logout baut der
   // Client die WebSocket-Verbindung neu auf, damit der neue Zustand greift.
   ws.account = accounts.userFromReq(req);
+  ws.ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || (req.socket && req.socket.remoteAddress) || '';
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
 
@@ -666,6 +692,7 @@ function handle(ws, m) {
       send(ws, { type: 'joined', code: room.code, clientId: ws.clientId, isHost: true });
       sendChatHistory(ws, room);
       systemChat(room, `${name} hat den Raum erstellt (Modus: ${MODE_LABEL[mode]}).`);
+      announceRoom(room, ws);
       broadcast(room);
       return;
     }
@@ -730,6 +757,7 @@ function handle(ws, m) {
       room.mode = mode;
       if (room.vote) clearVote(room);
       systemChat(room, `Spielmodus geändert: ${MODE_LABEL[mode]}.`);
+      announceRoom(room, ws);
       broadcast(room);
       return;
     }

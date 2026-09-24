@@ -15,6 +15,11 @@ Login-Links. Abgeleitet vom KKk58-Sidecar (gleiches Spool-Prinzip).
   * Aufträge mit ``"leave": true`` (Konto gelöscht): nach dem Senden – bzw.
     wenn das Senden endgültig scheitert – verlässt der Bot den Raum und
     vergisst ihn (``room_leave`` + ``room_forget``).
+  * Ankündigungsraum (optional, PORTRIGA_ANNOUNCE_ROOM): Aufträge mit
+    ``"announce": true`` werden NUR in diesen einen Raum gesendet – auch wenn er
+    unverschlüsselt ist (öffentlicher Raum). Nachrichten und Austritte in diesem
+    Raum werden NICHT an die Node-App weitergereicht (keine Befehle aus der
+    Öffentlichkeit, keine Login-Links dorthin).
   * Verlässt ein User einen Raum (membership leave/ban), wird das als
     ``{"type": "leave", ...}`` in die INBOX gemeldet; ist danach niemand außer
     dem Bot mehr im Raum, verlässt der Bot ihn ebenfalls.
@@ -111,6 +116,8 @@ class Config:
         # Nur Nachrichten annehmen, die jünger sind als X Sekunden (Schutz vor
         # Wiederverarbeitung alter Timeline beim Erststart).
         self.max_event_age = int(env("PORTRIGA_MAX_EVENT_AGE", "1800"))
+        # Öffentlicher Ankündigungsraum (!id:server oder #alias:server); leer = aus
+        self.announce_room = (env("PORTRIGA_ANNOUNCE_ROOM", "") or "").strip()
 
 
 def load_state(path):
@@ -154,9 +161,41 @@ class PortrigaBot:
         self._stop = False
         self._outbox_attempts = {}
         self._seen = set(self.state.get("seen", []))  # zuletzt verarbeitete event_ids
+        self._announce_id = None  # aufgelöste Raum-ID des Ankündigungsraums
 
     def log(self, *a):
         print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), *a, flush=True)
+
+    def _is_announce_room(self, rid):
+        if not rid or not self.cfg.announce_room:
+            return False
+        if rid in (self._announce_id, self.cfg.announce_room):
+            return True
+        # Alias noch nicht aufgelöst: über den kanonischen Alias des Raums erkennen
+        r = self.client.rooms.get(rid) if self.client else None
+        return bool(r) and getattr(r, "canonical_alias", None) == self.cfg.announce_room
+
+    async def _resolve_announce(self):
+        """Alias -> Raum-ID auflösen und dem (öffentlichen) Raum beitreten."""
+        a = self.cfg.announce_room
+        if not a:
+            return None
+        if self._announce_id:
+            return self._announce_id
+        rid = a
+        if a.startswith("#"):
+            resp = await self.client.room_resolve_alias(a)
+            rid = getattr(resp, "room_id", None)
+            if not rid:
+                raise RuntimeError("Alias nicht auflösbar: %s (%r)" % (a, resp))
+        if rid not in self.client.rooms:
+            resp = await self.client.join(rid)
+            if type(resp).__name__.endswith("Error"):
+                raise RuntimeError("Beitritt Ankündigungsraum fehlgeschlagen: %r" % (resp,))
+            await self.client.sync(timeout=0)
+        self._announce_id = rid
+        self.log("Ankündigungsraum:", a, "->", rid)
+        return rid
 
     # ---- eingehend ----
     async def _on_message(self, room, event):
@@ -164,6 +203,8 @@ class PortrigaBot:
             sender = getattr(event, "sender", "") or ""
             if sender == self.cfg.user_id:
                 return
+            if self._is_announce_room(room.room_id):
+                return  # öffentlicher Raum: keine Befehle annehmen
             eid = getattr(event, "event_id", None)
             if not eid or eid in self._seen:
                 return
@@ -208,6 +249,8 @@ class PortrigaBot:
             who = getattr(event, "state_key", "") or ""
             if not who or who == self.cfg.user_id:
                 return
+            if self._is_announce_room(room.room_id):
+                return  # Kommen/Gehen im öffentlichen Raum ist kein Konto-Ereignis
             if getattr(event, "membership", None) not in ("leave", "ban"):
                 return
             if getattr(event, "prev_membership", None) not in (None, "join", "invite"):
@@ -251,7 +294,20 @@ class PortrigaBot:
                 self.log("Beitritt fehlgeschlagen:", rid, repr(e))
 
     # ---- ausgehend ----
+    async def _send_announce(self, target, body):
+        if not self.cfg.announce_room or target != self.cfg.announce_room:
+            raise _PlaintextRefused(target)  # nur der konfigurierte Raum ist erlaubt
+        rid = await self._resolve_announce()
+        resp = await self.client.room_send(
+            rid, "m.room.message", {"msgtype": "m.notice", "body": body},
+            ignore_unverified_devices=True,
+        )
+        if not isinstance(resp, RoomSendResponse):
+            raise RuntimeError("room_send: " + repr(resp))
+
     async def _send_to_room(self, rid, body):
+        if self._is_announce_room(rid):
+            raise _PlaintextRefused(rid)  # keine Konto-Nachrichten in den öffentlichen Raum
         if rid not in self.client.rooms:
             await self.client.join(rid)
             await self.client.sync(timeout=0)
@@ -319,6 +375,11 @@ class PortrigaBot:
                 await self._finish(fpath, mid, msg)
                 continue
             try:
+                if msg.get("announce"):
+                    await self._send_announce(room, body)
+                    self.log("Outbox: Ankündigung gesendet an", room)
+                    await self._finish(fpath, mid, {})
+                    continue
                 await self._send_to_room(room, body)
                 self.log("Outbox: gesendet an", room)
                 await self._finish(fpath, mid, msg)
@@ -373,6 +434,11 @@ class PortrigaBot:
         if self.client.should_upload_keys:
             await self.client.keys_upload()
         await self._join_invites()
+        if self.cfg.announce_room:
+            try:
+                await self._resolve_announce()
+            except Exception as e:
+                self.log("Ankündigungsraum noch nicht erreichbar (neuer Versuch beim Senden):", repr(e))
 
     async def loop(self):
         while not self._stop:

@@ -330,7 +330,7 @@ function createAccounts(opts) {
       p.doneUserId = u.id; delete p.salt; delete p.hash;
       save();
       o.log('Konto angelegt:', u.username, u.mxid);
-      enqueue(roomId, `🃏 Portriga\nWillkommen, ${u.username}! Dein Konto ist aktiv und mit ${sender} verknüpft.\nDu kannst dich künftig per Login-Link über diesen Chat anmelden${u.hash ? ' oder mit deinem Passwort' : ''}.\nTipp: Schreib mir „login“, um jederzeit einen Login-Link zu bekommen.`);
+      enqueue(roomId, `🃏 Portriga\nWillkommen, ${u.username}! Dein Konto ist aktiv und mit ${sender} verknüpft.\nDu kannst dich künftig per Login-Link über diesen Chat anmelden${u.hash ? ' oder mit deinem Passwort' : ''}.\nTipp: Schreib mir „login“, um jederzeit einen Login-Link zu bekommen.${o.announceRoom ? `\n📢 Neue öffentliche und Ranglisten-Spiele findest du im Raum ${o.announceRoom}${o.announceLink ? ' (' + o.announceLink + ')' : ''}.` : ''}`);
       return 'registered';
     }
     const dm = body.match(DELETE_RE);

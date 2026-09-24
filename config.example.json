@@ -32,5 +32,11 @@
     "codeTtlMin": 15,
     "sessionDays": 30,
     "cookieSecure": true
+  },
+  "announce": {
+    "room": "",
+    "link": "",
+    "perCreatorSec": 120,
+    "maxPerHour": 30
   }
 }

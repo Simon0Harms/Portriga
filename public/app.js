@@ -1079,6 +1079,21 @@ $('btn-del-cancel').onclick = async () => {
   try { await api('/me/delete/cancel', {}); setMsg('del-msg', 'Löschung abgebrochen.', 'ok'); } catch(e){ setMsg('del-msg', e.message, 'bad'); }
 };
 
+// --- Werbung für den Matrix-Ankündigungsraum ---
+let announceCfg = { enabled:false };
+(async () => {
+  try {
+    const base = (typeof window.__BASE__ === 'string') ? window.__BASE__ : '';
+    const r = await fetch(`${base}/api/announce`, { cache:'no-store' });
+    announceCfg = await r.json();
+  } catch(_) { return; }
+  if (!announceCfg.enabled || !/^https:\/\//.test(announceCfg.link || '')) return;
+  for (const [box, a] of [['announce-box','announce-link'], ['lobby-announce','lobby-announce-link']]) {
+    $(a).href = announceCfg.link; $(a).textContent = announceCfg.room;
+    $(box).classList.remove('hidden');
+  }
+})();
+
 // --- Start: Konfiguration, Login-Link (?mlogin=…) ---
 (async () => {
   try { acctCfg = await api('/config'); } catch(_) { acctCfg = { enabled:false }; }

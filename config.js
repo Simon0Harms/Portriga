@@ -35,6 +35,12 @@ function loadConfig(opts = {}) {
       sessionDays: 30,      // Laufzeit der Anmeldung (Cookie)
       cookieSecure: true,   // false nur für lokalen Test ohne HTTPS
     },
+    announce: {
+      room: '',             // Matrix-Raum (!id:server oder #alias:server) für neue öffentliche/Ranglisten-Spiele; leer = aus
+      link: '',             // Link für die Werbung in der App; leer = https://matrix.to/#/<room>
+      perCreatorSec: 120,   // max. eine Ankündigung je Ersteller (Konto/IP) in diesem Zeitraum
+      maxPerHour: 30,       // globales Limit pro Stunde
+    },
   };
   let file = {};
   const cfgPath = path.join(__dirname, 'config.json');
@@ -54,6 +60,8 @@ function loadConfig(opts = {}) {
   if (process.env.PORTRIGA_PUBLIC_URL !== undefined) A.publicUrl = process.env.PORTRIGA_PUBLIC_URL;
   if (process.env.PORTRIGA_DATA_DIR) A.dataDir = process.env.PORTRIGA_DATA_DIR;
   if (process.env.COOKIE_SECURE !== undefined) A.cookieSecure = process.env.COOKIE_SECURE !== 'false' && process.env.COOKIE_SECURE !== '0';
+  if (process.env.PORTRIGA_ANNOUNCE_ROOM !== undefined) cfg.announce.room = process.env.PORTRIGA_ANNOUNCE_ROOM;
+  if (process.env.PORTRIGA_ANNOUNCE_LINK !== undefined) cfg.announce.link = process.env.PORTRIGA_ANNOUNCE_LINK;
   if (process.env.TURN_URL) {
     cfg.ice.turn = { url: process.env.TURN_URL, user: process.env.TURN_USER || '', pass: process.env.TURN_PASS || '' };
   }

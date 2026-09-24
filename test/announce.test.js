@@ -1,0 +1,67 @@
+'use strict';
+/* Unit- und E2E-Test der Matrix-Ankündigungen neuer öffentlicher/Ranglisten-Spiele. */
+const { spawn } = require('child_process');
+const fs = require('fs'), os = require('os'), path = require('path'), assert = require('assert');
+const WebSocket = require('ws');
+const { createAnnouncer } = require('../announce');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const readOut = dir => fs.readdirSync(dir).filter(n => n.endsWith('.json'))
+  .map(n => { const f = path.join(dir, n); const j = JSON.parse(fs.readFileSync(f, 'utf8')); fs.unlinkSync(f); return j; });
+
+// ---- Unit ----
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portriga-ann-'));
+  let t = 1e6;
+  const a = createAnnouncer({ room: '#spiele:example.org', outboxDir: dir, publicUrl: 'https://p.example.org/',
+    perCreatorSec: 60, maxPerHour: 3, now: () => t, log: () => {} });
+  assert.ok(a.enabled); assert.strictEqual(a.link, 'https://matrix.to/#/%23spiele%3Aexample.org');
+  assert.strictEqual(a.announce({ code: 'ABCD', mode: 'private', host: 'x', players: 1, maxPlayers: 7 }), false);
+  assert.ok(a.announce({ code: 'ABCD', mode: 'public', host: 'Ann\n@room', players: 1, maxPlayers: 7, creatorKey: 'k1' }));
+  assert.strictEqual(a.announce({ code: 'EFGH', mode: 'public', host: 'x', players: 1, maxPlayers: 7, creatorKey: 'k1' }), false, 'Ersteller-Limit');
+  assert.ok(a.announce({ code: 'IJKL', mode: 'ranked', host: 'y', players: 1, maxPlayers: 7, creatorKey: 'k2' }));
+  assert.ok(a.announce({ code: 'MNOP', mode: 'public', host: 'z', players: 1, maxPlayers: 7, creatorKey: 'k3' }));
+  assert.strictEqual(a.announce({ code: 'QRST', mode: 'public', host: 'z', players: 1, maxPlayers: 7, creatorKey: 'k4' }), false, 'Stundenlimit');
+  t += 3601e3;
+  assert.ok(a.announce({ code: 'QRST', mode: 'public', host: 'z', players: 1, maxPlayers: 7, creatorKey: 'k1' }));
+  const jobs = readOut(dir).sort((x, y) => x.body.localeCompare(y.body));
+  assert.strictEqual(jobs.length, 4);
+  for (const j of jobs) { assert.strictEqual(j.announce, true); assert.strictEqual(j.roomId, '#spiele:example.org'); }
+  const pub = jobs.find(j => j.body.includes('ABCD'));
+  assert.ok(pub.body.includes('https://p.example.org/?join=ABCD'));
+  assert.ok(!pub.body.includes('@room') && !/Ann\n/.test(pub.body), 'Name entschärft');
+  assert.ok(jobs.find(j => j.body.includes('IJKL')).body.startsWith('🏅 Neues Ranglisten-Spiel'));
+  assert.strictEqual(createAnnouncer({ room: 'kaputt', outboxDir: dir, log: () => {} }).enabled, false);
+  assert.strictEqual(createAnnouncer({ room: '', outboxDir: dir }).enabled, false);
+  console.log('announce unit: ok');
+}
+
+// ---- E2E über server.js ----
+(async () => {
+  const PORT = 3990 + Math.floor(Math.random() * 9);
+  const DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'portriga-ann-e2e-'));
+  const OUT = path.join(DATA, 'matrix-outbox');
+  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
+    env: Object.assign({}, process.env, { PORT: String(PORT), PORTRIGA_DATA_DIR: DATA,
+      PORTRIGA_ANNOUNCE_ROOM: '!abc:example.org', PORTRIGA_PUBLIC_URL: 'https://spiel.example.org',
+      MATRIX_BOT_MXID: '' }), stdio: 'ignore' });
+  try {
+    for (let i = 0; i < 50; i++) { try { await fetch(`http://127.0.0.1:${PORT}/health`); break; } catch (_) { await sleep(100); } }
+    const info = await (await fetch(`http://127.0.0.1:${PORT}/api/announce`)).json();
+    assert.deepStrictEqual(info, { enabled: true, room: '!abc:example.org', link: 'https://matrix.to/#/!abc%3Aexample.org' });
+    const client = () => new Promise(res => { const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`); const q = [];
+      ws.on('message', d => q.push(JSON.parse(d))); ws.on('open', () => res({ ws, q, send: m => ws.send(JSON.stringify(m)) })); });
+    const c = await client();
+    c.send({ type: 'hello', clientId: 'ann-test-1' }); await sleep(200);
+    c.send({ type: 'createRoom', name: 'Tester', mode: 'private' }); await sleep(200);
+    assert.strictEqual(readOut(OUT).length, 0, 'privat -> keine Ankündigung');
+    c.send({ type: 'setMode', mode: 'public' }); await sleep(200);
+    let jobs = readOut(OUT);
+    assert.strictEqual(jobs.length, 1); assert.strictEqual(jobs[0].roomId, '!abc:example.org');
+    assert.ok(/Raum [A-Z0-9]{4}/.test(jobs[0].body) && jobs[0].body.includes('?join='));
+    c.send({ type: 'setMode', mode: 'private' }); await sleep(100);
+    c.send({ type: 'setMode', mode: 'public' }); await sleep(200);
+    assert.strictEqual(readOut(OUT).length, 0, 'Raum nur einmal ankündigen');
+    c.ws.close();
+    console.log('announce e2e: ok');
+  } finally { srv.kill(); }
+})().catch(e => { console.error(e); process.exit(1); });
