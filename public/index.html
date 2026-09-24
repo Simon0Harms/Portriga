@@ -40,6 +40,13 @@
       <label id="name-label">Dein Name
         <input id="name" maxlength="20" placeholder="Spieler" />
       </label>
+      <label>Spielmodus
+        <select id="create-mode">
+          <option value="private">Privat – nur mit Code/Link</option>
+          <option value="public">Öffentlich – in der Raumliste, alle dürfen mitspielen</option>
+          <option value="ranked">Rangliste – nur angemeldete Konten, zählt für die Rangliste</option>
+        </select>
+      </label>
       <div class="row">
         <button id="btn-create" class="primary">Raum erstellen</button>
       </div>
@@ -49,6 +56,17 @@
         <button id="btn-join">Beitreten</button>
       </div>
       <p id="home-msg" class="msg"></p>
+      <div class="divider">offene Räume</div>
+      <ul id="room-list" class="seats room-list"></ul>
+      <p id="room-list-empty" class="hint">Keine öffentlichen Räume offen.</p>
+      <div class="row"><button id="btn-ranking" class="link">🏅 Rangliste anzeigen</button></div>
+      <div id="ranking-box" class="hidden">
+        <table id="ranking-table" class="ranking">
+          <thead><tr><th>#</th><th>Spieler</th><th>Siege</th><th>Spiele</th><th>Ø Punkte</th><th>Best</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p id="ranking-empty" class="hint hidden">Noch keine Ranglisten-Spiele.</p>
+      </div>
       <div class="row"><a class="btn-link" href="regeln.html" target="portriga-regeln" rel="noopener">📖 Spielregeln</a></div>
       <p class="feedback hint">Ideen oder Fehler gefunden?
         <a href="https://github.com/Simon0Harms/Portriga/issues" target="_blank" rel="noopener noreferrer">Verbesserungsvorschläge auf GitHub</a></p>
@@ -60,7 +78,15 @@
     <div class="panel">
       <h2>Lobby</h2>
       <p>Raumcode: <span id="lobby-code" class="code-badge"></span>
-        <button id="btn-copy" class="link">kopieren</button></p>
+        <button id="btn-copy" class="link">kopieren</button>
+        <span id="lobby-mode" class="mode-badge"></span></p>
+      <label id="lobby-mode-label" class="hidden">Spielmodus
+        <select id="lobby-mode-select">
+          <option value="private">Privat</option>
+          <option value="public">Öffentlich</option>
+          <option value="ranked">Rangliste</option>
+        </select>
+      </label>
       <div class="join-share">
         <p>Direktlink: <a id="lobby-link" class="join-link" href="#" target="_blank" rel="noopener"></a>
           <button id="btn-copy-link" class="link">kopieren</button></p>

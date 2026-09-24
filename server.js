@@ -8,6 +8,7 @@ const { WebSocketServer } = require('ws');
 const { Game, setRanks, MAX_PLAYERS_LIMIT } = require('./game');
 const { botBid, botCardId } = require('./bots');
 const { createAccounts } = require('./accounts');
+const { createRanking } = require('./ranking');
 
 // ---- Zentrale Konfiguration ----
 // Priorität: eingebaute Defaults < config.json (in /opt/portriga) < Umgebungsvariablen.
@@ -115,6 +116,7 @@ const accounts = createAccounts({
     for (const c of wss.clients) {
       if (c.account && c.account.id === id) { c.account = null; send(c, { type: 'account', user: null }); }
     }
+    ranking.removeUser(id);
     for (const room of rooms.values()) {
       let hit = false;
       for (const s of room.seats) if (s.accountId === id) { s.accountId = null; hit = true; }
@@ -124,6 +126,16 @@ const accounts = createAccounts({
 });
 accounts.mount(app, express, BASE);
 accounts.start();
+
+// ---- Spielmodi & Rangliste (Issue #8) ----
+// private: nur per Code/Link · public: in der Raumliste, jeder darf beitreten
+// ranked: in der Raumliste, nur angemeldete Konten, keine Bots, Ergebnis zählt für die Rangliste
+const MODES = ['private', 'public', 'ranked'];
+const MODE_LABEL = { private: 'Privat', public: 'Öffentlich', ranked: 'Rangliste' };
+const ranking = createRanking({ dataDir: AC.dataDir || path.join(__dirname, 'data') });
+const rankingHandler = (_req, res) => res.set('Cache-Control', 'no-store').json({ enabled: accounts.enabled, players: ranking.top(50) });
+if (BASE) app.get(BASE + '/api/ranking', rankingHandler);
+app.get('/api/ranking', rankingHandler);
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
@@ -287,6 +299,10 @@ function finishVote(room, reason) {
   clearVote(room);
   if (kind === 'start') {
     if (room.game || room.seats.length < 2) { broadcast(room); return; }
+    if (room.mode === 'ranked') {
+      try { checkRankedAllowed(room); }
+      catch (e) { systemChat(room, `Start abgebrochen: ${e.message}`); broadcast(room); return; }
+    }
     room.game = new Game(room.seats.map(s => ({ id: s.id, name: s.name, bot: s.bot })));
     room.game.start();
     systemChat(room, `Das Spiel wurde gestartet${reason ? ` (${reason})` : ''}. Viel Erfolg!`);
@@ -313,6 +329,7 @@ function lobbyView(room) {
     type: 'state',
     lobby: true,
     code: room.code,
+    mode: room.mode,
     hostId: room.hostId,
     seats: room.seats.map(s => ({ id: s.id, name: s.name, bot: s.bot, connected: s.connected, verified: !!s.accountId })),
     maxPlayers: MAX_PLAYERS,
@@ -322,6 +339,8 @@ function lobbyView(room) {
 
 function broadcast(room) {
   syncVote(room);
+  recordRanked(room);
+  scheduleRoomList();
   if (!room.game) {
     for (const s of room.seats) {
       if (!s.bot) send(sockets.get(s.id), { ...lobbyView(room), youId: s.id });
@@ -336,6 +355,7 @@ function broadcast(room) {
       type: 'state',
       lobby: false,
       code: room.code,
+      mode: room.mode,
       hostId: room.hostId,
       view: room.game.viewFor(s.id),
       vote: voteView(room),
@@ -365,6 +385,49 @@ function driveBots(room) {
   }, delay);
 }
 
+/* Ranglisten-Spiel beendet -> Ergebnis genau einmal speichern. */
+function recordRanked(room) {
+  const g = room.game;
+  if (room.mode !== 'ranked' || !g || g.phase !== 'gameEnd' || room.rankedRecorded) return;
+  room.rankedRecorded = true;
+  const results = g.players.map(p => {
+    const seat = seatOf(room, p.id);
+    return { accountId: seat && seat.accountId, username: p.name, score: p.score };
+  });
+  try {
+    if (ranking.recordGame(results)) systemChat(room, 'Ergebnis wurde in die Rangliste eingetragen.');
+  } catch (e) { console.warn('Rangliste nicht gespeichert:', e.message); }
+}
+
+/* Offene öffentliche/Ranglisten-Räume (Lobby, nicht voll) für den Startbildschirm. */
+function roomListView() {
+  const list = [];
+  for (const room of rooms.values()) {
+    if (room.mode === 'private' || room.game || room.seats.length >= MAX_PLAYERS) continue;
+    const host = seatOf(room, room.hostId);
+    list.push({ code: room.code, mode: room.mode, host: host ? host.name : '?',
+      players: room.seats.length, maxPlayers: MAX_PLAYERS, voting: !!room.vote });
+  }
+  return list.sort((a, b) => b.players - a.players || a.code.localeCompare(b.code));
+}
+// An alle Clients ohne Raum (Startbildschirm) senden – gebündelt, max. einmal pro Tick.
+let roomListPending = false;
+function scheduleRoomList() {
+  if (roomListPending) return;
+  roomListPending = true;
+  setImmediate(() => {
+    roomListPending = false;
+    const msg = { type: 'roomList', rooms: roomListView() };
+    for (const c of wss.clients) if (c.clientId && !clientRoom.has(c.clientId)) send(c, msg);
+  });
+}
+function parseMode(v) { return MODES.includes(v) ? v : 'private'; }
+function checkRankedAllowed(room) {
+  if (!accounts.enabled) throw new Error('Ranglisten-Spiele benötigen Benutzerkonten (auf diesem Server deaktiviert).');
+  if (room.seats.some(s => s.bot)) throw new Error('Ranglisten-Spiele sind ohne Bots – bitte zuerst alle Bots entfernen.');
+  if (room.seats.some(s => !s.accountId)) throw new Error('Ranglisten-Spiele nur mit angemeldeten Konten – im Raum sitzen noch Gäste.');
+}
+
 function seatOf(room, clientId) { return room.seats.find(s => s.id === clientId); }
 
 function closeRoom(room, reason) {
@@ -376,6 +439,7 @@ function closeRoom(room, reason) {
   }
   clearVote(room);
   rooms.delete(room.code);
+  scheduleRoomList();
 }
 
 wss.on('connection', (ws, req) => {
@@ -411,6 +475,7 @@ wss.on('connection', (ws, req) => {
       clearVote(room);
       rooms.delete(room.code);
       for (const s of room.seats) clientRoom.delete(s.id);
+      scheduleRoomList();
       return;
     }
     broadcast(room);
@@ -439,21 +504,30 @@ function handle(ws, m) {
         broadcast(room);
       } else {
         send(ws, { type: 'ready', clientId: id });
+        send(ws, { type: 'roomList', rooms: roomListView() });
       }
+      return;
+    }
+
+    case 'listRooms': {
+      send(ws, { type: 'roomList', rooms: roomListView() });
       return;
     }
 
     case 'createRoom': {
       requireId(ws);
-      leaveCurrent(ws.clientId);
+      const mode = parseMode(m.mode);
+      if (mode === 'ranked' && !accounts.enabled) throw new Error('Ranglisten-Spiele benötigen Benutzerkonten (auf diesem Server deaktiviert).');
+      if (mode === 'ranked' && !ws.account) throw new Error('Für Ranglisten-Spiele bitte zuerst anmelden.');
       const name = playerName(ws, m.name);
-      const room = { code: code4(), hostId: ws.clientId,
+      leaveCurrent(ws.clientId);
+      const room = { code: code4(), hostId: ws.clientId, mode,
         seats: [{ id: ws.clientId, name, bot: false, connected: true, accountId: ws.account ? ws.account.id : null }], game: null, chat: [] };
       rooms.set(room.code, room);
       clientRoom.set(ws.clientId, room.code);
       send(ws, { type: 'joined', code: room.code, clientId: ws.clientId, isHost: true });
       sendChatHistory(ws, room);
-      systemChat(room, `${name} hat den Raum erstellt.`);
+      systemChat(room, `${name} hat den Raum erstellt (Modus: ${MODE_LABEL[mode]}).`);
       broadcast(room);
       return;
     }
@@ -463,9 +537,10 @@ function handle(ws, m) {
       const room = rooms.get(String(m.code || '').toUpperCase());
       if (!room) return err(ws, 'Raum nicht gefunden.');
       if (room.game) return err(ws, 'Spiel läuft bereits – kein Beitritt möglich.');
-      if (room.seats.length >= MAX_PLAYERS) return err(ws, `Raum ist voll (max. ${MAX_PLAYERS}).`);
-      leaveCurrent(ws.clientId);
       let seat = seatOf(room, ws.clientId);
+      if (!seat && room.seats.length >= MAX_PLAYERS) return err(ws, `Raum ist voll (max. ${MAX_PLAYERS}).`);
+      if (!seat && room.mode === 'ranked' && !ws.account) return err(ws, 'Ranglisten-Raum: Beitritt nur mit angemeldetem Konto.');
+      if (clientRoom.get(ws.clientId) !== room.code) leaveCurrent(ws.clientId);
       let isNew = false;
       if (!seat) {
         const name = playerName(ws, m.name);
@@ -489,6 +564,7 @@ function handle(ws, m) {
       const room = hostRoom(ws);
       if (room.game) throw new Error('Nur in der Lobby.');
       if (room.seats.length >= MAX_PLAYERS) throw new Error(`Max. ${MAX_PLAYERS} Plätze.`);
+      if (room.mode === 'ranked') throw new Error('In Ranglisten-Räumen sind keine Bots erlaubt.');
       const n = room.seats.filter(s => s.bot).length + 1;
       room.seats.push({ id: `bot-${room.code}-${Date.now()}-${n}`, name: `Bot ${n}`, bot: true, connected: true });
       if (room.vote) { clearVote(room); systemChat(room, 'Abstimmung abgebrochen (Sitzordnung geändert).'); }
@@ -506,9 +582,23 @@ function handle(ws, m) {
       return;
     }
 
+    case 'setMode': {
+      const room = hostRoom(ws);
+      if (room.game) throw new Error('Nur in der Lobby.');
+      const mode = parseMode(m.mode);
+      if (mode === room.mode) return;
+      if (mode === 'ranked') checkRankedAllowed(room);
+      room.mode = mode;
+      if (room.vote) clearVote(room);
+      systemChat(room, `Spielmodus geändert: ${MODE_LABEL[mode]}.`);
+      broadcast(room);
+      return;
+    }
+
     case 'startGame': {
       const room = hostRoom(ws);
       if (room.game) throw new Error('Spiel läuft bereits.');
+      if (room.mode === 'ranked') checkRankedAllowed(room);
       if (room.seats.length < 2) throw new Error('Mindestens 2 Plätze nötig.');
       if (room.vote) throw new Error('Abstimmung läuft bereits.');
       // Host eröffnet die Abstimmung und stimmt selbst mit Ja.
@@ -590,6 +680,7 @@ function handle(ws, m) {
     case 'leaveRoom': {
       leaveCurrent(ws.clientId);
       send(ws, { type: 'left' });
+      send(ws, { type: 'roomList', rooms: roomListView() });
       return;
     }
 

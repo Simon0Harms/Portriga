@@ -62,6 +62,7 @@ function send(m){
 function onMessage(m){
   switch(m.type){
     case 'ready': break;
+    case 'roomList': renderRoomList(m.rooms || []); break;
     case 'account': setAccount(m.user || null); break;
     case 'joined':
       hostId = null; enterRoomUI(); show('lobby'); break;
@@ -90,7 +91,51 @@ function show(name){
 }
 
 // ---------- Home ----------
-$('btn-create').onclick = () => { saveName(); send({ type:'createRoom', name: myName }); };
+const MODE_LABEL = { private:'🔒 Privat', public:'🌐 Öffentlich', ranked:'🏅 Rangliste' };
+$('btn-create').onclick = () => {
+  saveName();
+  const mode = $('create-mode').value;
+  if (mode === 'ranked' && !account) return toast('Für Ranglisten-Spiele bitte zuerst anmelden.');
+  send({ type:'createRoom', name: myName, mode });
+};
+function renderRoomList(list){
+  const ul = $('room-list'); ul.innerHTML = '';
+  $('room-list-empty').classList.toggle('hidden', list.length > 0);
+  for (const r of list){
+    const li = document.createElement('li');
+    const nm = document.createElement('span');
+    nm.textContent = `${r.code} · ${r.host} · ${r.players}/${r.maxPlayers}`;
+    li.appendChild(nm);
+    const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = MODE_LABEL[r.mode] || r.mode; li.appendChild(tag);
+    const b = document.createElement('button'); b.textContent = 'Beitreten';
+    if (r.mode === 'ranked' && !account){ b.disabled = true; b.title = 'Nur mit angemeldetem Konto'; }
+    b.onclick = () => { saveName(); send({ type:'joinRoom', code: r.code, name: myName }); };
+    li.appendChild(b);
+    ul.appendChild(li);
+  }
+}
+async function loadRanking(){
+  const base = (typeof window.__BASE__ === 'string') ? window.__BASE__ : '';
+  try {
+    const res = await fetch(`${base}/api/ranking`, { cache:'no-store' });
+    const d = await res.json();
+    const tb = $('ranking-table').querySelector('tbody'); tb.innerHTML = '';
+    (d.players || []).forEach((p, i) => {
+      const tr = document.createElement('tr');
+      for (const v of [i+1, p.username, p.wins, p.games, p.avg, p.best ?? '–']){
+        const td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
+      }
+      tb.appendChild(tr);
+    });
+    $('ranking-empty').classList.toggle('hidden', (d.players || []).length > 0);
+  } catch (e) { toast('Rangliste konnte nicht geladen werden.'); }
+}
+$('btn-ranking').onclick = () => {
+  const box = $('ranking-box');
+  const open = box.classList.toggle('hidden') === false;
+  $('btn-ranking').textContent = open ? '🏅 Rangliste ausblenden' : '🏅 Rangliste anzeigen';
+  if (open) loadRanking();
+};
 $('btn-join').onclick = () => {
   saveName();
   const code = $('join-code').value.trim().toUpperCase();
@@ -116,6 +161,12 @@ function renderLobby(m){
   }
   const isHost = m.hostId === clientId;
   $('host-controls').classList.toggle('hidden', !isHost);
+  const mode = m.mode || 'private';
+  $('lobby-mode').textContent = MODE_LABEL[mode] || mode;
+  $('lobby-mode-label').classList.toggle('hidden', !isHost);
+  $('lobby-mode-select').value = mode;
+  $('btn-addbot').classList.toggle('hidden', mode === 'ranked');
+  $('btn-rmbot').classList.toggle('hidden', mode === 'ranked');
   const ul = $('seat-list'); ul.innerHTML = '';
   m.seats.forEach(s => {
     const li = document.createElement('li');
@@ -133,6 +184,7 @@ function renderLobby(m){
        : 'Bereit – du kannst starten.')
     : 'Warte auf den Host…';
 }
+$('lobby-mode-select').onchange = (e) => send({ type:'setMode', mode: e.target.value });
 $('btn-addbot').onclick = () => send({ type:'addBot' });
 $('btn-rmbot').onclick = () => send({ type:'removeBot' });
 $('btn-start').onclick = () => send({ type:'startGame' });
@@ -637,6 +689,7 @@ function setAccount(u){
   $('acct-guest').classList.toggle('hidden', !!u);
   $('acct-user').classList.toggle('hidden', !u);
   $('name-label').classList.toggle('hidden', !!u);
+  if (wsReady) send({ type:'listRooms' }); // Beitreten-Buttons für Ranglisten-Räume aktualisieren
   if (u){ $('acct-name').textContent = u.username; myName = u.username; }
   else { myName = localStorage.getItem('portriga_name') || ''; $('name').value = myName; }
   setForcedRelink(!!(u && u.needsRelink));

@@ -9,6 +9,14 @@ Verlauf (bleibt bei Reconnect erhalten), Ungelesen-Zähler und dezenten System-M
 (Beitritt, Spielstart). Der Verlauf liegt nur im RAM und ist auf die letzten 60 Nachrichten begrenzt.
 Zusätzlich gibt es einen **Voice-Chat** als WebRTC-Mesh (Details unten).
 
+## Spielmodi
+Beim Erstellen eines Raums wählt der Host den Modus (in der Lobby jederzeit änderbar):
+- **Privat** – wie bisher: Beitritt nur per Code, Direktlink oder QR-Code.
+- **Öffentlich** – der Raum erscheint auf dem Startbildschirm in der Liste „offene Räume“; jeder (auch Gäste) kann beitreten.
+- **Rangliste** – ebenfalls gelistet, aber nur für angemeldete Konten und ohne Bots. Das Endergebnis wird in
+  `<dataDir>/ranking.json` gespeichert (Spiele, Siege, Ø-Punkte, Bestwert) und ist über „🏅 Rangliste“ bzw.
+  `GET /api/ranking` abrufbar. Setzt aktivierte Benutzerkonten voraus.
+
 ## Umgesetzte Regeln
 - 2 Skatblätter = 64 Karten (jede Karte doppelt), 2–7 Spieler; mit der **alternativen Variante** mehr (Standard-Limit 63, per `game.maxPlayers` einschränkbar).
 - Rundenfolge der Kartenanzahl pro Spieler: **1→7 aufsteigend, dann 8 genau *N*-mal (N = Spieleranzahl), dann 7→1 absteigend.** Geber wandert pro Runde im Uhrzeigersinn.
@@ -34,6 +42,7 @@ game.js            Regel-Engine (rein, testbar)
 bots.js            simpler Platzhalter-Bot
 server.js          Express + WebSocket, Räume, Bot-Steuerung, Reconnect
 accounts.js        Benutzerkonten: Registrierung per Matrix-DM, Login, Sessions
+ranking.js         Rangliste für Ranglisten-Räume (data/ranking.json)
 public/            Frontend (index.html, style.css, app.js) + regeln.html (eigenständige Regelseite)
 test/simulate.js   kopflose Vollspiel-Simulation (npm test)
 deploy/            Proxmox-LXC + systemd + nginx + coturn/ENV (Voice)
