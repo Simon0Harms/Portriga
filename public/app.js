@@ -211,11 +211,29 @@ $('btn-copy-link').onclick = () => { navigator.clipboard?.writeText($('lobby-lin
 $('btn-copy').onclick = () => { navigator.clipboard?.writeText($('lobby-code').textContent); toast('Code kopiert.'); };
 
 // ---------- Game ----------
+function cardSrc(key){
+  const en = window.PortrigaI18n && window.PortrigaI18n.lang === 'en';
+  return (en && /-[BD]$/.test(key) ? 'cards/en/' : 'cards/') + key + '.svg';
+}
 function cardEl(card, opts={}){
   const el = document.createElement('div');
   el.className = 'card ' + (SUIT[card.suit].color==='red'?'red':'');
   if (opts.win) el.classList.add('win');
-  el.innerHTML = `<div class="r">${card.rank}</div><div class="s">${SUIT[card.suit].sym}</div>`;
+  // Nur Bildkarten für A, K, D, B – Zahlenkarten bleiben Text-Karten
+  if (!/^(A|K|D|B)$/.test(card.rank)) {
+    el.innerHTML = `<div class="r">${card.rank}</div><div class="s">${SUIT[card.suit].sym}</div>`;
+    if (opts.who!=null){ const w=document.createElement('div'); w.className='who'; w.textContent=opts.who; el.appendChild(w); }
+    return el;
+  }
+  el.classList.add('img');
+  const img = document.createElement('img');
+  // Sprachabhängige Bilder: auf Englisch Bube/Dame mit J/Q-Index (cards/en/), Rest identisch
+  img.dataset.card = `${card.suit}-${card.rank}`;
+  img.src = cardSrc(img.dataset.card);
+  img.alt = `${SUIT[card.suit].sym} ${card.rank}`; img.draggable = false;
+  // Fallback auf Text-Darstellung, falls das Bild fehlt (z.B. abweichende Ränge per config)
+  img.onerror = () => { el.classList.remove('img'); img.insertAdjacentHTML('beforebegin', `<div class="r">${card.rank}</div><div class="s">${SUIT[card.suit].sym}</div>`); img.remove(); };
+  el.appendChild(img);
   if (opts.who!=null){ const w=document.createElement('div'); w.className='who'; w.textContent=opts.who; el.appendChild(w); }
   return el;
 }
