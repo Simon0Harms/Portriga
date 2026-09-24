@@ -142,6 +142,38 @@ function wsSession(withCookie) {
     r = await req('/register/check?u=Loeschkandidat'); assert.strictEqual(r.json.available, true);
     r = await req('/login', { login: '@del:example.org', password: 'geheim456' }); assert.strictEqual(r.status, 401);
 
+    // Matrix-Konto/-Raum ändern
+    cookie = ''; await sleep(5100);
+    r = await req('/register/start', { username: 'Umzug', password: 'geheim789' }); assert.strictEqual(r.status, 200);
+    const t4 = r.json.token; dm('@alt:example.org', r.json.code, '!alt:example.org'); await sleep(2600); outbox();
+    r = await req('/register/status?token=' + t4); assert.strictEqual(r.json.status, 'done');
+    r = await req('/me/matrix', { password: 'falsch000' }); assert.strictEqual(r.status, 401);
+    r = await req('/me/matrix', { password: 'geheim789' }); assert.strictEqual(r.status, 200); assert.match(r.json.code, /^MX-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    let rlTok = r.json.token, rlCode = r.json.code;
+    r = await req('/me/matrix/status?token=' + rlTok); assert.strictEqual(r.json.status, 'pending');
+    // MXID eines anderen Kontos -> abgelehnt
+    dm('@simon:example.org', rlCode, '!x:example.org'); await sleep(2600);
+    assert.ok(outbox().some(m => /bereits mit dem Konto/.test(m.body)));
+    r = await req('/me/matrix/status?token=' + rlTok); assert.strictEqual(r.json.status, 'failed');
+    // neuer Code, neue MXID + neuer Raum
+    await sleep(5100); r = await req('/me/matrix', { password: 'geheim789' }); rlTok = r.json.token; rlCode = r.json.code;
+    dm('@neu:example.org', 'bitte ' + rlCode.toLowerCase(), '!neu:example.org'); await sleep(2600);
+    const rlOut = outbox();
+    assert.ok(rlOut.some(m => m.roomId === '!neu:example.org' && /jetzt mit @neu:example.org verknüpft/.test(m.body)));
+    assert.ok(rlOut.some(m => m.roomId === '!alt:example.org' && m.leave === true));
+    r = await req('/me/matrix/status?token=' + rlTok); assert.strictEqual(r.json.status, 'done'); assert.strictEqual(r.json.user.mxid, '@neu:example.org');
+    r = await req('/login', { login: '@alt:example.org', password: 'geheim789' }); assert.strictEqual(r.status, 401);
+    r = await req('/login', { login: '@neu:example.org', password: 'geheim789' }); assert.strictEqual(r.status, 200);
+    // Code ist verbraucht
+    await sleep(3100); dm('@neu:example.org', rlCode, '!neu:example.org'); await sleep(2600);
+    assert.ok(outbox().some(m => /unbekannt oder abgelaufen/.test(m.body)));
+    // nur Raumwechsel (gleiche MXID)
+    await sleep(5100); r = await req('/me/matrix', { password: 'geheim789' });
+    dm('@neu:example.org', r.json.code, '!neu2:example.org'); await sleep(2600);
+    const rw = outbox();
+    assert.ok(rw.some(m => m.roomId === '!neu2:example.org' && /nutze ich ab jetzt diesen Chat/.test(m.body)));
+    assert.ok(rw.some(m => m.roomId === '!neu:example.org' && m.leave === true));
+
     // Fremder Origin blockiert
     const x = await fetch(URL0 + '/api/account/login', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' }, body: '{}' });
     assert.strictEqual(x.status, 403);

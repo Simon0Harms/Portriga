@@ -621,6 +621,7 @@ const API = ((typeof window.__BASE__ === 'string') ? window.__BASE__ : '') + '/a
 let account = null, acctCfg = { enabled:false };
 let regToken = null, regExpires = 0, regPoll = null, regTick = null;
 let delToken = null, delExpires = 0, delPoll = null, delTick = null;
+let rlToken = null, rlExpires = 0, rlPoll = null, rlTick = null;
 
 async function api(pathname, body){
   const opt = body === undefined ? {} : { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) };
@@ -655,6 +656,9 @@ function openAcct(view){
     $('del-pw-label').classList.toggle('hidden', !account.hasPassword);
     $('del-pw').value = ''; setMsg('del-msg','');
     if (!delToken) showDelStep(1);
+    $('rl-pw-label').classList.toggle('hidden', !account.hasPassword);
+    $('rl-pw').value = ''; setMsg('rl-msg','');
+    if (!rlToken) showRlStep(1);
   }
 }
 function closeAcct(){ $('acct-modal').classList.add('hidden'); }
@@ -765,6 +769,44 @@ $('btn-logout-all').onclick = async () => {
   if (!confirm('Auf allen Geräten abmelden?')) return;
   try { await api('/me/logout-all', {}); } catch(_) {}
   setAccount(null); closeAcct(); reconnectWs(); toast('Überall abgemeldet.');
+};
+
+// --- Matrix-Konto / -Chat ändern ---
+function showRlStep(n){ $('rl-step1').classList.toggle('hidden', n !== 1); $('rl-step2').classList.toggle('hidden', n !== 2); }
+function stopRlPoll(){ clearInterval(rlPoll); clearInterval(rlTick); rlPoll = rlTick = null; }
+function resetRl(){ stopRlPoll(); rlToken = null; showRlStep(1); }
+function startRlPoll(){
+  stopRlPoll();
+  const tick = () => {
+    const s = Math.max(0, Math.round((rlExpires - Date.now()) / 1000));
+    $('rl-timer').textContent = Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+  };
+  tick(); rlTick = setInterval(tick, 1000);
+  rlPoll = setInterval(async () => {
+    if (!rlToken) return stopRlPoll();
+    try {
+      const j = await api('/me/matrix/status?token=' + encodeURIComponent(rlToken));
+      if (j.status === 'done') { resetRl(); setAccount(j.user); $('set-mxid').textContent = j.user.mxid; setMsg('rl-msg', '✓ Verknüpft mit ' + j.user.mxid + '.', 'ok'); }
+      else if (j.status === 'failed') { resetRl(); setMsg('rl-msg', '✗ ' + j.error, 'bad'); }
+      else if (j.status === 'expired') { resetRl(); setMsg('rl-msg', '✗ Code abgelaufen – bitte neu anfordern.', 'bad'); }
+    } catch(e){ if (e.status === 401) { resetRl(); setAccount(null); closeAcct(); } }
+  }, 2500);
+}
+$('btn-rl-start').onclick = async () => {
+  try {
+    const j = await api('/me/matrix', { password: $('rl-pw').value });
+    $('rl-pw').value = ''; setMsg('rl-msg', '');
+    rlToken = j.token; rlExpires = j.expires;
+    $('rl-code').textContent = j.code;
+    $('rl-bot').textContent = j.botMxid; $('rl-bot').href = j.matrixTo;
+    setMsg('rl-wait', '⏳ Warte auf deine Nachricht…');
+    showRlStep(2); startRlPoll();
+  } catch(e){ setMsg('rl-msg', e.message, 'bad'); }
+};
+$('btn-copy-rl').onclick = () => copyText($('rl-code').textContent);
+$('btn-rl-cancel').onclick = async () => {
+  resetRl();
+  try { await api('/me/matrix/cancel', {}); setMsg('rl-msg', 'Abgebrochen.', 'ok'); } catch(e){ setMsg('rl-msg', e.message, 'bad'); }
 };
 
 // --- Konto löschen (bei Matrix-Verknüpfung Bestätigung per DM) ---

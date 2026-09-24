@@ -228,6 +228,25 @@
         <p id="set-msg" class="msg"></p>
         <button id="btn-logout-all" class="link">Auf allen Geräten abmelden</button>
 
+        <div class="relink-zone">
+          <h3>Matrix-Konto / -Chat ändern</h3>
+          <div id="rl-step1">
+            <p class="hint">Verknüpfe dein Konto mit einer anderen Matrix-ID oder einem neuen Chat mit dem Bot. Du erhältst einen Code, den du von der gewünschten Matrix-ID per Direktnachricht an den Bot schickst.</p>
+            <label id="rl-pw-label">Passwort zur Bestätigung
+              <input id="rl-pw" type="password" autocomplete="current-password" />
+            </label>
+            <div class="row"><button id="btn-rl-start">Code anfordern</button></div>
+          </div>
+          <div id="rl-step2" class="hidden">
+            <p>Schreibe <a id="rl-bot" target="_blank" rel="noopener noreferrer"></a> <b>von der gewünschten Matrix-ID</b> in dem gewünschten Chat:</p>
+            <div class="reg-code-box"><span id="rl-code" class="reg-code"></span> <button id="btn-copy-rl" class="link">kopieren</button></div>
+            <p class="hint">Gleiche Matrix-ID aus einem neuen Chat = nur Chat-Wechsel. Gültig noch <span id="rl-timer"></span>.</p>
+            <p id="rl-wait" class="msg"></p>
+            <div class="row"><button id="btn-rl-cancel">Abbrechen</button></div>
+          </div>
+          <p id="rl-msg" class="msg"></p>
+        </div>
+
         <div class="danger-zone">
           <h3>Konto löschen</h3>
           <div id="del-step1">

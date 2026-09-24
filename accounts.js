@@ -20,6 +20,11 @@
  *   ``leave``). Konten ohne Matrix-Verknüpfung werden nach Passwortprüfung
  *   sofort gelöscht.
  *
+ * Matrix-Konto/-Raum ändern: angemeldet in der App einen Code „MX-XXXX-XXXX“
+ *   anfordern und ihn per DM an den Bot schicken. Absender-MXID und Raum werden
+ *   neu verknüpft (gleiche MXID aus neuem Raum = nur Raumwechsel). Der alte Raum
+ *   wird benachrichtigt; der Bot verlässt ihn, wenn kein Konto ihn mehr nutzt.
+ *
  * Kommunikation mit dem Sidecar ausschließlich über zwei Spool-Verzeichnisse
  * (je Auftrag eine Datei, atomar via tmp+rename) – wie in KKk58:
  *   outbox/  App -> Sidecar  {id, roomId, body, createdAt, leave?}
@@ -36,6 +41,8 @@ const MXID_RE = /^@[^\s:]+:[^\s:]+$/;
 const CODE_ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const CODE_RE = /PR-?([A-Z2-9]{4})-?([A-Z2-9]{4})/i;
 // Bestätigung der Kontolöschung per DM: „löschen ABCD-EFGH“ (auch „loeschen“, „!löschen“, „delete“)
+// Code zum Ändern der Matrix-Verknüpfung (eigenes Präfix, damit er nie als Registrierungscode gilt)
+const RELINK_RE = /MX-?([A-Z2-9]{4})-?([A-Z2-9]{4})/i;
 const DELETE_RE = /^\s*!?(?:l(?:ö|oe)schen|delete)(?:\s+(?:DEL-?)?([A-Z2-9]{4})-?([A-Z2-9]{4}))?\s*$/i;
 
 function createAccounts(opts) {
@@ -51,6 +58,7 @@ function createAccounts(opts) {
     basePath: '',
     inboxPollMs: 2000,
     deleteTtlMs: 10 * 60 * 1000,
+    relinkTtlMs: 15 * 60 * 1000,
     onUserDeleted: null, // (userId) => void – z. B. offene WebSockets abmelden
     log: (...a) => console.log('[accounts]', ...a),
   }, opts || {});
@@ -70,7 +78,7 @@ function createAccounts(opts) {
   const eqHex = (a, b) => { const x = Buffer.from(String(a), 'hex'), y = Buffer.from(String(b), 'hex'); return x.length === y.length && x.length > 0 && crypto.timingSafeEqual(x, y); };
 
   // ---- Persistenz ----
-  let db = { users: [], pending: [], magic: [], deletions: [], nextId: 1 };
+  let db = { users: [], pending: [], magic: [], deletions: [], relinks: [], nextId: 1 };
   try { db = Object.assign(db, JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))); } catch (e) { if (e.code !== 'ENOENT') o.log('accounts.json unlesbar:', e.message); }
   function save() {
     const tmp = DB_FILE + '.tmp';
@@ -79,12 +87,14 @@ function createAccounts(opts) {
   }
   function prune() {
     const now = Date.now();
-    const n1 = db.pending.length, n2 = db.magic.length, n3 = db.deletions.length;
+    if (!Array.isArray(db.relinks)) db.relinks = [];
+    const n1 = db.pending.length, n2 = db.magic.length, n3 = db.deletions.length, n4 = db.relinks.length;
     db.pending = db.pending.filter(p => p.expires > now || (p.doneUserId && p.expires + 3600e3 > now));
     db.magic = db.magic.filter(m => !m.used && m.expires > now);
     // erledigte Löschungen noch 1 h behalten, damit der Browser den Status abholen kann
     db.deletions = db.deletions.filter(d => d.expires > now || (d.done && d.expires + 3600e3 > now));
-    return n1 !== db.pending.length || n2 !== db.magic.length || n3 !== db.deletions.length;
+    db.relinks = db.relinks.filter(x => x.expires > now || ((x.done || x.error) && x.expires + 3600e3 > now));
+    return n1 !== db.pending.length || n2 !== db.magic.length || n3 !== db.deletions.length || n4 !== db.relinks.length;
   }
 
   // ---- Passwörter (scrypt) ----
@@ -189,6 +199,7 @@ function createAccounts(opts) {
     db.magic = db.magic.filter(m => m.userId !== u.id);
     db.pending = db.pending.filter(p => p.doneUserId !== u.id);
     for (const d of db.deletions) if (d.userId === u.id && !d.done) { d.done = true; d.codeHash = null; }
+    db.relinks = (db.relinks || []).filter(x => x.userId !== u.id);
     save();
     o.log('Konto gelöscht:', u.username, u.mxid || '(ohne Matrix)');
     if (typeof o.onUserDeleted === 'function') { try { o.onUserDeleted(u.id); } catch (e) { o.log('onUserDeleted:', e.message); } }
@@ -202,12 +213,57 @@ function createAccounts(opts) {
     return { d, code };
   }
 
+  // ---- Matrix-Konto/-Raum ändern ----
+  function startRelink(u) {
+    db.relinks = (db.relinks || []).filter(x => x.userId !== u.id);
+    const code = 'MX-' + newCode().slice(3);
+    const x = { token: crypto.randomBytes(24).toString('base64url'), userId: u.id, codeHash: hmac('relink:' + u.id + ':' + code.replace(/^MX-|-/g, '')), expires: Date.now() + o.relinkTtlMs, done: false, error: null, createdAt: Date.now() };
+    db.relinks.push(x); save();
+    return { x, code };
+  }
+  function handleRelink(sender, roomId, a, b) {
+    const now = Date.now();
+    const raw = (a + b).toUpperCase();
+    const x = (db.relinks || []).find(r => !r.done && !r.error && r.expires > now && eqHex(r.codeHash, hmac('relink:' + r.userId + ':' + raw)));
+    if (!x) { enqueue(roomId, '🃏 Portriga\nDieser Code ist unbekannt oder abgelaufen. Bitte fordere in der App unter „Konto“ einen neuen an.'); return 'badrelink'; }
+    const u = userById(x.userId);
+    if (!u) { x.error = 'Konto nicht gefunden.'; save(); return 'nouser'; }
+    const other = userByMxid(sender);
+    if (other && other.id !== u.id) {
+      x.error = 'Diese Matrix-ID ist bereits mit dem Konto „' + other.username + '“ verknüpft.'; x.expires = now + 10 * 60 * 1000; save();
+      enqueue(roomId, `🃏 Portriga\nDeine Matrix-ID ist bereits mit dem Konto „${other.username}“ verknüpft. Die Verknüpfung wurde nicht geändert.`);
+      return 'mxidtaken';
+    }
+    const oldMxid = u.mxid || null, oldRoom = u.dmRoomId || null;
+    const mxidChanged = lc(oldMxid) !== lc(sender);
+    u.mxid = sender; u.dmRoomId = roomId;
+    // Neue Identität -> offene Login-Links/Löschanfragen der alten MXID verwerfen
+    if (mxidChanged) {
+      db.magic = db.magic.filter(m => m.userId !== u.id);
+      db.deletions = db.deletions.filter(d => d.userId !== u.id || d.done);
+    }
+    x.done = true; x.codeHash = null; x.newMxid = sender;
+    save();
+    o.log('Matrix-Verknüpfung geändert:', u.username, (oldMxid || '-') + ' -> ' + sender, oldRoom === roomId ? '' : '(neuer Raum)');
+    enqueue(roomId, `🃏 Portriga\n${mxidChanged ? `Dein Konto „${u.username}“ ist jetzt mit ${sender} verknüpft.` : `Für dein Konto „${u.username}“ nutze ich ab jetzt diesen Chat.`}\nLogin-Links und Bestätigungen kommen künftig hierher.`);
+    if (oldRoom && oldRoom !== roomId) {
+      const shared = db.users.some(v => v.dmRoomId === oldRoom);
+      enqueue(oldRoom, `🃏 Portriga\nDie Matrix-Verknüpfung des Kontos „${u.username}“ wurde ${mxidChanged ? 'auf ' + sender : 'auf einen anderen Chat'} umgestellt.${shared ? '' : ' Ich verlasse diesen Chat.'}\nWenn du das nicht warst, melde dich in der App an und ändere dein Passwort.`, shared ? null : { leave: true });
+    }
+    return 'relinked';
+  }
+
   // ---- Inbox (Sidecar -> App) ----
   function handleInbound(msg) {
     const sender = String(msg.sender || '').trim();
     const roomId = String(msg.roomId || '').trim();
     const body = String(msg.body || '');
     if (!MXID_RE.test(sender) || !roomId || lc(sender) === lc(o.botMxid)) return 'ignored';
+    const rl = body.match(RELINK_RE);
+    if (rl) {
+      if (rateHit('relink:' + lc(sender), 3000)) return 'rate';
+      return handleRelink(sender, roomId, rl[1], rl[2]);
+    }
     const m = body.match(CODE_RE);
     if (m) {
       const code = normCode(m[1], m[2]);
@@ -430,6 +486,32 @@ function createAccounts(opts) {
       res.json({ ok: true });
     });
 
+    // Matrix-Konto/-Raum ändern: Code anfordern, per DM von der (neuen) MXID an den Bot schicken.
+    r.post('/me/matrix', (req, res) => {
+      if (!enabled) return off(res);
+      const u = req.user;
+      const ip = ipOf(req);
+      if (throttled(ip)) return res.status(429).json({ error: 'Zu viele Versuche, bitte später erneut.' });
+      if (u.hash && !verifyPw(u, (req.body && req.body.password) || '')) { badTry(ip); return res.status(401).json({ error: 'Passwort falsch.' }); }
+      if (rateHit('relinkreq:' + u.id, 5000)) return res.status(429).json({ error: 'Bitte kurz warten.' });
+      const { x, code } = startRelink(u);
+      res.json({ ok: true, token: x.token, code, botMxid: o.botMxid, matrixTo: 'https://matrix.to/#/' + o.botMxid, expires: x.expires });
+    });
+    r.get('/me/matrix/status', (req, res) => {
+      const x = (db.relinks || []).find(v => v.userId === req.user.id && v.token === String(req.query.token || ''));
+      if (!x) return res.json({ status: 'expired' });
+      if (x.done) return res.json({ status: 'done', user: publicUser(req.user) });
+      if (x.error) return res.json({ status: 'failed', error: x.error });
+      if (!(x.expires > Date.now())) return res.json({ status: 'expired' });
+      res.json({ status: 'pending', expires: x.expires });
+    });
+    r.post('/me/matrix/cancel', (req, res) => {
+      const n = (db.relinks || []).length;
+      db.relinks = (db.relinks || []).filter(v => v.userId !== req.user.id || v.done);
+      if (n !== db.relinks.length) save();
+      res.json({ ok: true });
+    });
+
     // Alle Sitzungen beenden (inkl. dieser)
     r.post('/me/logout-all', (req, res) => { req.user.sessVer = (req.user.sessVer || 0) + 1; save(); clearSession(res); res.json({ ok: true }); });
 
@@ -455,4 +537,4 @@ function createAccounts(opts) {
   };
 }
 
-module.exports = { createAccounts, USERNAME_RE, CODE_RE, DELETE_RE };
+module.exports = { createAccounts, USERNAME_RE, CODE_RE, RELINK_RE, DELETE_RE };

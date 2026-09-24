@@ -105,6 +105,14 @@ fest an den Benutzernamen gebunden (✓ in der Lobby); Gäste können registrier
 einmalig). Alternativ dem Bot `login` schreiben. Passwort lässt sich im Konto-Dialog setzen,
 ändern oder entfernen; „Auf allen Geräten abmelden“ invalidiert alle Sitzungen.
 
+**Matrix-Konto / -Chat ändern:** im Konto-Dialog unter „Matrix-Konto / -Chat ändern“ (bei
+gesetztem Passwort mit Passwortbestätigung) einen Code `MX-XXXX-XXXX` anfordern (15 Min. gültig)
+und ihn **von der gewünschten MXID** per DM an den Bot schicken. Absender-MXID und Raum werden neu
+verknüpft; kommt der Code von der bisherigen MXID aus einem anderen Chat, wird nur der Raum
+gewechselt. Eine MXID, die schon zu einem anderen Konto gehört, wird abgelehnt. Der alte Chat wird
+benachrichtigt, der Bot verlässt ihn (sofern kein anderes Konto ihn nutzt); offene Login-Links und
+Löschanfragen der alten MXID verfallen.
+
 **Konto löschen:** im Konto-Dialog unter „Konto löschen“ (bei gesetztem Passwort mit
 Passwortabfrage). Ist das Konto mit Matrix verknüpft, schickt der Bot einen Bestätigungsbefehl
 per DM (`löschen XXXX-XXXX`, 10 Min. gültig, wird auch in der App angezeigt). Erst wenn diese
