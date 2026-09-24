@@ -73,6 +73,7 @@ function onMessage(m){
       renderVote(m.lobby ? 'lobby-vote' : 'ov-vote', m.vote || null);
       if (m.lobby) $('btn-start').disabled = !!m.vote;
       renderKick(m.lobby ? (m.kick || null) : null);
+      renderMute(m.mute || null);
       break;
     case 'rtcConfig': if (m.iceServers) rtcConfig = { iceServers: m.iceServers }; break;
     case 'voice': onVoiceMembers(m.members || []); break;
@@ -499,7 +500,7 @@ let voiceRoster = [];                 // aktuelle Voice-Mitglieder laut Server
 const peers = new Map();              // id -> {pc, polite, makingOffer, ignoreOffer, name, speaking}
 
 function enterRoomUI(){ setFab(true); $('voice').classList.remove('hidden'); }
-function exitRoomUI(){ renderVote('lobby-vote', null); renderKick(null); setFab(false); $('voice').classList.add('hidden'); voiceLeave(true); }
+function exitRoomUI(){ renderVote('lobby-vote', null); renderKick(null); renderMute(null); setFab(false); $('voice').classList.add('hidden'); voiceLeave(true); }
 
 async function voiceJoin(){
   if (voiceJoined) return;
@@ -518,6 +519,7 @@ async function voiceJoin(){
   $('voice-active').classList.remove('hidden');
   $('voice-mute').classList.remove('on'); $('voice-mute').textContent = '🔇 Stumm';
   send({ type:'voice-join' });
+  if (selfVoteMuted) applySelfMute(true);   // per Abstimmung stumm: nur zuhören
   renderVoiceList();
 }
 
@@ -535,6 +537,7 @@ function voiceLeave(silent){
 
 function onVoiceMembers(members){
   voiceRoster = members;
+  for (const m of members) applyRemoteMute(m.id, !!m.muted);
   const others = voiceRoster.filter(m=>m.id!==clientId);
   $('voice-join').textContent = others.length ? `🎤 Voice beitreten (${others.length} aktiv)` : '🎤 Voice beitreten';
   if (voiceJoined){
@@ -600,6 +603,7 @@ function attachRemote(id, stream){
   let el = document.getElementById('audio-'+id);
   if (!el){ el=document.createElement('audio'); el.id='audio-'+id; el.autoplay=true; el.setAttribute('playsinline',''); $('remote-audio').appendChild(el); }
   el.srcObject = stream;
+  el.muted = isVoteMuted(id);
   setupMeter(id, stream);
 }
 
@@ -613,6 +617,7 @@ function closePeer(id){
 
 function toggleMute(){
   if (!localStream) return;
+  if (selfVoteMuted) return toast('Du bist stummgeschaltet und kannst das Mikrofon nicht aktivieren.');
   muted = !muted;
   localStream.getAudioTracks().forEach(t=>t.enabled = !muted);
   const b = $('voice-mute');
@@ -667,7 +672,7 @@ function stateLabel(s){
 function voiceRow(rowId, name, isMuted, speaking, right){
   const el=document.createElement('div');
   el.id='vrow-'+rowId;
-  el.className='vc'+(speaking?' speaking':'')+(isMuted?' muted':'');
+  el.className='vc'+(speaking?' speaking':'')+(isMuted?' muted':'')+(isVoteMuted(rowId==='me'?clientId:rowId)?' muted-by-vote':'');
   el.innerHTML=`<span class="ring"></span><span class="nm">${escapeHtml(name)}</span><span class="st">${escapeHtml(right||'')}</span>`;
   return el;
 }
@@ -677,9 +682,104 @@ function renderVoiceList(){
   for (const m of voiceRoster){
     if (m.id===clientId) continue;
     const p=peers.get(m.id);
-    box.appendChild(voiceRow(m.id, m.name, false, p?p.speaking:false, p?stateLabel(p.pc.connectionState):'…'));
+    box.appendChild(voiceRow(m.id, m.name, !!m.muted, p?p.speaking:false, m.muted?'stumm (Abst.)':(p?stateLabel(p.pc.connectionState):'…')));
   }
 }
+
+// ---------- Mute per Abstimmung (Text- und Sprachchat) ----------
+let mutedIds = new Set(), selfVoteMuted = false, muteVoteState = null, muteVoteTimer = null, mutePanelOpen = false;
+function isVoteMuted(id){ return mutedIds.has(id); }
+function applyRemoteMute(id, on){
+  const el = document.getElementById('audio-'+id);
+  if (el) el.muted = on;
+}
+function applySelfMute(on){
+  selfVoteMuted = on;
+  // Chat-Eingabe sperren
+  const inp = $('chat-text');
+  inp.disabled = on; $('chat-send').disabled = on;
+  inp.placeholder = on ? 'Du bist stummgeschaltet' : 'Nachricht…';
+  // Mikrofon zwangsweise aus
+  if (localStream){
+    if (on){ muted = true; localStream.getAudioTracks().forEach(t=>t.enabled=false); }
+    const b = $('voice-mute');
+    b.classList.toggle('on', muted); b.textContent = muted ? '🔈 Laut' : '🔇 Stumm';
+    b.disabled = on;
+  }
+}
+function renderMute(info){
+  const players = info ? info.players : [];
+  const prevSelf = selfVoteMuted;
+  mutedIds = new Set(players.filter(p=>p.muted).map(p=>p.id));
+  const me = players.find(p=>p.id===clientId);
+  const meMuted = !!(me && me.muted);
+  if (meMuted !== prevSelf){
+    applySelfMute(meMuted);
+    if (info) toast(meMuted ? '🔇 Du wurdest im Text- und Sprachchat stummgeschaltet.' : '🔈 Du bist wieder freigeschaltet.');
+  }
+  for (const p of players) applyRemoteMute(p.id, p.muted && p.id!==clientId);
+  // Spielerliste im Chat-Panel
+  const ul = $('mute-list'); ul.innerHTML = '';
+  const iAmAdmin = !!(me && me.admin);
+  const vote = info ? info.vote : null;
+  for (const p of players){
+    if (p.id===clientId) continue;
+    const li = document.createElement('li'); if (p.muted) li.className='muted';
+    const nm = document.createElement('span'); nm.className='nm';
+    nm.textContent = (p.muted?'🔇 ':'') + p.name + (p.admin?' (Admin)':'') + (p.connected?'':' (getrennt)');
+    li.appendChild(nm);
+    const canVote = iAmAdmin || (!vote && (p.muted || !p.admin));
+    if (canVote){
+      const b = document.createElement('button');
+      b.textContent = p.muted ? 'Entmuten' : 'Muten';
+      b.title = iAmAdmin ? 'Sofort (Admin)' : 'Abstimmung starten (mehr als 50 % Ja; bei 2 Spielern sofort)';
+      b.onclick = () => send({ type:'mute', targetId: p.id, action: p.muted ? 'unmute' : 'mute' });
+      li.appendChild(b);
+    }
+    ul.appendChild(li);
+  }
+  if (!ul.children.length){ const li=document.createElement('li'); li.textContent='Keine Mitspieler.'; ul.appendChild(li); }
+  renderMuteVote(vote);
+  renderVoiceList();
+}
+function renderMuteVote(v){
+  const box = $('mute-vote');
+  muteVoteState = v ? { ...v, localDeadline: Date.now() + v.remainingMs } : null;
+  if (!v){ box.classList.add('hidden'); box.innerHTML=''; if (muteVoteTimer){ clearInterval(muteVoteTimer); muteVoteTimer=null; } return; }
+  box.classList.remove('hidden');
+  const isTarget = v.targetId === clientId;
+  const mine = (v.voters.find(x => x.id===clientId) || {}).vote;
+  const yes = v.voters.filter(x => x.vote==='yes').length;
+  const list = v.voters.map(x => {
+    const cls = x.vote || 'open', sym = x.vote==='yes' ? '✓' : x.vote==='no' ? '✗' : '…';
+    return `<li class="${cls}">${sym} ${escapeHtml(x.name)}${x.id===clientId?' (du)':''}</li>`;
+  }).join('');
+  const what = v.action === 'mute' ? 'stummschalten' : 'wieder freischalten';
+  box.innerHTML = `<div class="vt-head"><span>${v.action==='mute'?'🔇':'🔈'} ${escapeHtml(v.targetName)} ${what}?</span><span class="vt-time"></span></div>
+    <div class="vt-bar"><div></div></div>
+    <ul>${list}</ul>
+    <div class="hint">${yes} von ${v.needed} nötigen Ja-Stimmen (mehr als 50 %).</div>
+    ${isTarget ? '<div class="hint">Über dich wird abgestimmt – du bist nicht stimmberechtigt.</div>' : `<div class="vt-btns">
+      <button data-m="yes" class="primary${mine==='yes'?' sel':''}">Ja</button>
+      <button data-m="no" class="${mine==='no'?'sel':''}">Nein</button>
+    </div>`}`;
+  box.querySelectorAll('button[data-m]').forEach(b => b.onclick = () => send({ type:'muteVote', choice: b.dataset.m }));
+  tickMuteVote();
+  if (!muteVoteTimer) muteVoteTimer = setInterval(tickMuteVote, 250);
+}
+function tickMuteVote(){
+  if (!muteVoteState) return;
+  const box = $('mute-vote');
+  const ms = Math.max(0, muteVoteState.localDeadline - Date.now());
+  const t = box.querySelector('.vt-time'), bar = box.querySelector('.vt-bar>div');
+  if (t) t.textContent = Math.ceil(ms/1000) + ' s';
+  if (bar) bar.style.width = (100 * ms / muteVoteState.totalMs) + '%';
+}
+$('chat-mute-toggle').onclick = () => {
+  mutePanelOpen = !mutePanelOpen;
+  $('mute-panel').classList.toggle('hidden', !mutePanelOpen);
+  $('chat-mute-toggle').classList.toggle('on', mutePanelOpen);
+};
 
 $('voice-join').onclick = voiceJoin;
 $('voice-leave').onclick = () => voiceLeave(false);

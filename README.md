@@ -66,6 +66,15 @@ sudo -u portriga node admin-cli.js list                   # Admins anzeigen
 ```
 Gespeichert in `data/admins.json` (Konto-ID); der laufende Server übernimmt Änderungen ohne Neustart.
 
+## Spieler stummschalten (Text- & Sprachchat)
+In Lobby und laufendem Spiel kann jeder über 🔇 im Raum-Chat einen Mitspieler zur **Mute-Abstimmung** stellen.
+Stimmberechtigt sind alle verbundenen Menschen außer dem Betroffenen; wirksam bei **mehr als 50 % Ja** (60 s Zeit).
+Sind nur **2 Spieler** im Raum, greift der Mute sofort. Entmuten funktioniert genauso.
+
+Stummgeschaltete können nicht schreiben; im Voice dürfen sie nur zuhören (ihr Audio wird bei allen Empfängern
+stummgeschaltet, ihr Mikrofon wird clientseitig deaktiviert). Der Mute gilt für den Raum und bleibt bei
+Reconnect/Neubeitritt bestehen. Admins muten/entmuten sofort und können nicht per Abstimmung gemutet werden.
+
 ## Lokal starten
 ```bash
 npm install

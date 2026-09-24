@@ -176,12 +176,22 @@
   </div>
   <div id="remote-audio"></div>
 
+  <!-- Mute-Abstimmung (Lobby & Spiel) -->
+  <div id="mute-vote" class="vote kick hidden"></div>
+
   <!-- Raum-Chat (in Lobby & Spiel) -->
   <button id="chat-fab" class="hidden" title="Chat">💬<span id="chat-badge" class="chat-badge hidden">0</span></button>
   <div id="chat" class="hidden">
     <div id="chat-head">
       <span>Raum-Chat</span>
-      <button id="chat-close" class="link" title="Minimieren">–</button>
+      <span class="chat-head-btns">
+        <button id="chat-mute-toggle" class="link" title="Spieler stummschalten (Text &amp; Voice)">🔇</button>
+        <button id="chat-close" class="link" title="Minimieren">–</button>
+      </span>
+    </div>
+    <div id="mute-panel" class="hidden">
+      <div class="hint">Stummschalten gilt für Text- und Sprachchat. Nötig: mehr als 50 % Ja – bei nur 2 Spielern sofort.</div>
+      <ul id="mute-list"></ul>
     </div>
     <div id="chat-log"></div>
     <div id="chat-input-row">

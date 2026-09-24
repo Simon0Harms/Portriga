@@ -174,7 +174,7 @@ function sendChatHistory(ws, room) {
 function voiceMembers(room) {
   if (!room.voice) return [];
   return [...room.voice]
-    .map(id => { const s = seatOf(room, id); return s ? { id, name: s.name } : null; })
+    .map(id => { const s = seatOf(room, id); return s ? { id, name: s.name, muted: isMuted(room, s) } : null; })
     .filter(Boolean);
 }
 function broadcastVoice(room) {
@@ -351,6 +351,101 @@ function kickPlayer(room, targetId, how) {
   send(ws, { type: 'kicked', reason: `Du wurdest ${how} aus dem Raum ${room.code} entfernt.` });
   send(ws, { type: 'roomList', rooms: roomListView() });
 }
+/* ---- Mute per Abstimmung (Lobby und laufendes Spiel) ----
+ * room.muted   = { ids:Set<clientId>, accounts:Set<accountId> }  – stummgeschaltet in Text- und Sprachchat
+ * room.muteVote = { targetId, initiatorId, action:'mute'|'unmute', votes:{clientId:'yes'|'no'}, deadline, timer }
+ * - Stimmberechtigt: alle verbundenen menschlichen Spieler außer dem Betroffenen.
+ * - Wirksam, sobald MEHR als 50 % der Stimmberechtigten mit Ja gestimmt haben.
+ * - Sind nur 2 Menschen im Raum, greift der (Ent-)Mute sofort.
+ * - Admins muten/entmuten sofort und können selbst nicht per Abstimmung gemutet werden.
+ * - Stummgeschaltete dürfen nicht schreiben; im Voice dürfen sie nur zuhören – ihr Audio wird
+ *   von allen Empfängern verworfen und ihr eigener Client sendet kein Mikrofon mehr.
+ * - Der Mute hängt an Client-ID und Konto und überdauert Reconnect/Neubeitritt im selben Raum.
+ */
+const MUTE_MS = 60000;
+function isMuted(room, seat) {
+  const m = room.muted;
+  return !!m && !!seat && (m.ids.has(seat.id) || (seat.accountId != null && m.accounts.has(seat.accountId)));
+}
+function setMuted(room, seat, on) {
+  if (!room.muted) room.muted = { ids: new Set(), accounts: new Set() };
+  const m = room.muted;
+  if (on) { m.ids.add(seat.id); if (seat.accountId != null) m.accounts.add(seat.accountId); }
+  else { m.ids.delete(seat.id); if (seat.accountId != null) m.accounts.delete(seat.accountId); }
+}
+function muteVoters(room) {
+  const v = room.muteVote;
+  return v ? voters(room).filter(s => s.id !== v.targetId) : [];
+}
+function muteView(room) {
+  const v = room.muteVote;
+  const players = room.seats.filter(s => !s.bot).map(s => ({
+    id: s.id, name: s.name, connected: s.connected, muted: isMuted(room, s), admin: isAdminSeat(s),
+  }));
+  let vote = null;
+  if (v) {
+    const target = seatOf(room, v.targetId);
+    const vs = muteVoters(room);
+    vote = {
+      targetId: v.targetId, targetName: target ? target.name : '?', action: v.action,
+      remainingMs: Math.max(0, v.deadline - Date.now()), totalMs: MUTE_MS,
+      needed: Math.floor(vs.length / 2) + 1,
+      voters: vs.map(s => ({ id: s.id, name: s.name, vote: v.votes[s.id] || null })),
+    };
+  }
+  return { players, vote };
+}
+function clearMuteVote(room) {
+  if (room.muteVote && room.muteVote.timer) clearTimeout(room.muteVote.timer);
+  room.muteVote = null;
+}
+function openMuteVote(room, targetId, initiatorId, action) {
+  clearMuteVote(room);
+  const v = { targetId, initiatorId, action, votes: { [initiatorId]: 'yes' }, deadline: Date.now() + MUTE_MS, timer: null };
+  v.timer = setTimeout(() => {
+    if (room.muteVote !== v || rooms.get(room.code) !== room) return;
+    const target = seatOf(room, v.targetId);
+    clearMuteVote(room);
+    systemChat(room, `Abstimmung zum ${v.action === 'mute' ? 'Muten' : 'Entmuten'} von ${target ? target.name : '?'} abgelaufen – keine Mehrheit.`);
+    broadcast(room);
+  }, MUTE_MS);
+  room.muteVote = v;
+}
+/* 'pass' = Mehrheit erreicht, 'fail' = Mehrheit nicht mehr möglich, 'gone' = hinfällig, null = offen */
+function muteOutcome(room) {
+  const v = room.muteVote;
+  if (!v) return null;
+  const target = seatOf(room, v.targetId);
+  if (!target || isMuted(room, target) === (v.action === 'mute')) return 'gone';
+  const vs = muteVoters(room);
+  const yes = vs.filter(s => v.votes[s.id] === 'yes').length;
+  const no = vs.filter(s => v.votes[s.id] === 'no').length;
+  if (vs.length > 0 && yes * 2 > vs.length) return 'pass';
+  if ((vs.length - no) * 2 <= vs.length) return 'fail';
+  return null;
+}
+function resolveMuteVote(room) {
+  const outcome = muteOutcome(room);
+  if (!outcome) return false;
+  const v = room.muteVote;
+  const target = seatOf(room, v.targetId);
+  clearMuteVote(room);
+  if (outcome === 'pass') applyMute(room, target, v.action === 'mute', 'per Abstimmung');
+  else {
+    if (outcome === 'fail' && target) systemChat(room, `${target.name} wird nicht ${v.action === 'mute' ? 'gemutet' : 'entmutet'} – keine Mehrheit.`);
+    broadcast(room);
+  }
+  return true;
+}
+function applyMute(room, seat, on, how) {
+  if (!seat || seat.bot) return;
+  setMuted(room, seat, on);
+  systemChat(room, on ? `${seat.name} wurde ${how} stummgeschaltet (Text- und Sprachchat).`
+                      : `${seat.name} wurde ${how} wieder freigeschaltet.`);
+  broadcast(room);
+  broadcastVoice(room);
+}
+
 function isAdminSeat(seat) { return !!seat && !seat.bot && admins.isAdmin(seat.accountId); }
 function isBanned(room, ws) {
   const b = room.banned;
@@ -368,6 +463,7 @@ function lobbyView(room) {
     maxPlayers: MAX_PLAYERS,
     vote: voteView(room),
     kick: kickView(room),
+    mute: muteView(room),
   };
 }
 
@@ -375,6 +471,7 @@ function broadcast(room) {
   syncVote(room);
   // Sitz-/Verbindungsänderung kann eine laufende Kick-Abstimmung entscheiden -> nachgelagert auflösen.
   if (kickOutcome(room)) setImmediate(() => { if (rooms.get(room.code) === room) resolveKick(room); });
+  if (muteOutcome(room)) setImmediate(() => { if (rooms.get(room.code) === room) resolveMuteVote(room); });
   recordRanked(room);
   scheduleRoomList();
   if (!room.game) {
@@ -395,6 +492,7 @@ function broadcast(room) {
       hostId: room.hostId,
       view: room.game.viewFor(s.id),
       vote: voteView(room),
+      mute: muteView(room),
     });
   }
 }
@@ -475,6 +573,7 @@ function closeRoom(room, reason) {
   }
   clearVote(room);
   clearKick(room);
+  clearMuteVote(room);
   rooms.delete(room.code);
   scheduleRoomList();
 }
@@ -511,6 +610,7 @@ wss.on('connection', (ws, req) => {
       // niemand mehr da: Raum verwerfen
       clearVote(room);
       clearKick(room);
+      clearMuteVote(room);
       rooms.delete(room.code);
       for (const s of room.seats) clientRoom.delete(s.id);
       scheduleRoomList();
@@ -697,6 +797,47 @@ function handle(ws, m) {
       return;
     }
 
+    case 'mute': {
+      // m.action: 'mute' (Standard) | 'unmute'
+      const { room, seat } = memberRoom(ws);
+      const action = m.action === 'unmute' ? 'unmute' : 'mute';
+      const targetId = String(m.targetId || '');
+      const target = seatOf(room, targetId);
+      if (!target || target.bot) throw new Error('Spieler nicht gefunden.');
+      if (targetId === seat.id) throw new Error(action === 'mute' ? 'Du kannst dich nicht selbst muten.' : 'Du kannst dich nicht selbst entmuten.');
+      if (isMuted(room, target) === (action === 'mute')) throw new Error(`${target.name} ist ${action === 'mute' ? 'bereits stummgeschaltet' : 'nicht stummgeschaltet'}.`);
+      // Admin: sofort, ohne Abstimmung.
+      if (ws.account && admins.isAdmin(ws.account.id) && seat.accountId === ws.account.id) {
+        if (room.muteVote && room.muteVote.targetId === targetId) clearMuteVote(room);
+        applyMute(room, target, action === 'mute', 'von einem Admin');
+        return;
+      }
+      if (action === 'mute' && isAdminSeat(target)) throw new Error('Admins können nicht per Abstimmung gemutet werden.');
+      // Nur 2 Menschen im Raum: sofort wirksam.
+      if (room.seats.filter(s => !s.bot).length <= 2) {
+        if (room.muteVote && room.muteVote.targetId === targetId) clearMuteVote(room);
+        applyMute(room, target, action === 'mute', `von ${seat.name}`);
+        return;
+      }
+      if (room.muteVote) throw new Error('Es läuft bereits eine Mute-Abstimmung.');
+      openMuteVote(room, targetId, seat.id, action);
+      systemChat(room, `${seat.name} möchte ${target.name} ${action === 'mute' ? 'stummschalten' : 'wieder freischalten'} – Abstimmung (${MUTE_MS / 1000} s, mehr als 50 % Ja nötig).`);
+      if (resolveMuteVote(room)) return;
+      broadcast(room);
+      return;
+    }
+
+    case 'muteVote': {
+      const { room, seat } = memberRoom(ws);
+      const v = room.muteVote;
+      if (!v) throw new Error('Keine Mute-Abstimmung aktiv.');
+      if (seat.id === v.targetId) throw new Error('Du bist von dieser Abstimmung betroffen und nicht stimmberechtigt.');
+      v.votes[seat.id] = m.choice === 'no' ? 'no' : 'yes';
+      if (resolveMuteVote(room)) return;
+      broadcast(room);
+      return;
+    }
+
     case 'bid': {
       const { room, seat } = playerRoom(ws);
       room.game.placeBid(seat.id, Number(m.n));
@@ -720,6 +861,7 @@ function handle(ws, m) {
 
     case 'chat': {
       const { room, seat } = memberRoom(ws);
+      if (isMuted(room, seat)) throw new Error('Du bist stummgeschaltet und kannst nicht schreiben.');
       const text = String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, CHAT_TEXT_MAX);
       if (!text) return;
       const msg = { name: seat.name, text, ts: Date.now() };
