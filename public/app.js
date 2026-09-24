@@ -278,6 +278,7 @@ function renderGame(m){
   } else if (v.phase==='playing'){
     banner.textContent = v.turnIdx===me ? 'Du bist dran: Karte spielen' : `${players[v.turnIdx].name} ist am Zug…`;
   } else banner.textContent='';
+  ttsOnTurn(v, me);
 
   // Ansage-Buttons
   const bidding = $('bidding'), bb = $('bid-buttons');
@@ -1129,3 +1130,50 @@ setInterval(async () => {
   if (!account || !account.needsRelink || rlToken) return;
   try { const j = await api('/me'); if (!j.user || !j.user.needsRelink) { setAccount(j.user); if (j.user) toast('Neuer Matrix-Chat verknüpft.'); } } catch(_) {}
 }, 5000);
+
+// ---------------------------------------------------------------- TTS: „Du bist dran“
+// Sprachausgabe per Web Speech API, wenn der eigene Zug beginnt.
+// Ein-/Ausschalter im Spiel-Header, Einstellung wird lokal gemerkt.
+const TTS_KEY = 'portriga_tts';
+const ttsSupported = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+let ttsOn = false;
+try { ttsOn = ttsSupported && localStorage.getItem(TTS_KEY) === '1'; } catch (_) {}
+let ttsLastKey = null;
+
+function ttsUpdateBtn(){
+  const b = $('btn-tts'); if (!b) return;
+  b.classList.toggle('hidden', !ttsSupported);
+  b.classList.toggle('on', ttsOn);
+  b.textContent = ttsOn ? '🔊' : '🔇';
+  b.title = ttsOn ? 'Sprachausgabe ausschalten' : 'Sprachausgabe einschalten';
+  b.setAttribute('aria-pressed', ttsOn ? 'true' : 'false');
+}
+function ttsSpeak(text){
+  if (!ttsOn || !ttsSupported) return;
+  const en = window.PortrigaI18n && window.PortrigaI18n.lang === 'en';
+  const msg = en && window.PortrigaI18n.t ? window.PortrigaI18n.t(text) : text;
+  const u = new SpeechSynthesisUtterance(msg);
+  u.lang = en ? 'en-US' : 'de-DE';
+  const voice = speechSynthesis.getVoices().find(x => x.lang && x.lang.toLowerCase().startsWith(en ? 'en' : 'de'));
+  if (voice) u.voice = voice;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+function ttsOnTurn(v, me){
+  const mine = (v.phase==='bidding' || v.phase==='playing') && v.turnIdx===me;
+  // Schlüssel je Zug, damit Re-Renders nicht erneut sprechen
+  const key = mine ? [v.phase, v.roundIndex, v.tricksPlayed, v.currentTrick.length].join('|') : null;
+  if (key && key !== ttsLastKey){
+    ttsSpeak(v.phase==='bidding' ? 'Du bist dran: Stiche ansagen' : 'Du bist dran: Karte spielen');
+  }
+  ttsLastKey = key;
+}
+if ($('btn-tts')){
+  $('btn-tts').onclick = () => {
+    ttsOn = !ttsOn;
+    try { localStorage.setItem(TTS_KEY, ttsOn ? '1' : '0'); } catch (_) {}
+    ttsUpdateBtn();
+    if (ttsOn) ttsSpeak('Sprachausgabe eingeschaltet'); else if (ttsSupported) speechSynthesis.cancel();
+  };
+  ttsUpdateBtn();
+}
