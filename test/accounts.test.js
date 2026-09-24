@@ -71,6 +71,12 @@ function wsSession(withCookie) {
     r = await req('/register/status?token=' + token); assert.strictEqual(r.json.status, 'done'); assert.ok(cookie, 'Session-Cookie gesetzt');
     assert.strictEqual(r.json.user.mxid, '@simon:example.org'); assert.strictEqual(r.json.user.hasPassword, true);
     r = await req('/me'); assert.strictEqual(r.json.user.username, 'Simon');
+    // Ranglisten-Benachrichtigung: standardmäßig aus, per Einstellung schaltbar
+    assert.strictEqual(r.json.user.notifyRank, false);
+    r = await req('/me/notify', { notifyRank: 'ja' }); assert.strictEqual(r.status, 422);
+    r = await req('/me/notify', { notifyRank: true }); assert.strictEqual(r.status, 200); assert.strictEqual(r.json.user.notifyRank, true);
+    r = await req('/me/notify', { notifyRank: false }); assert.strictEqual(r.json.user.notifyRank, false);
+    r = await req('/me/notify', { notifyRank: true }, false); assert.strictEqual(r.status, 401);
 
     // WebSocket mit Konto: Name aus dem Konto, Sitz verifiziert
     const a = await wsSession(true); await sleep(200);

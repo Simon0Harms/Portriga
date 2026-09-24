@@ -19,6 +19,8 @@ Beim Erstellen eines Raums wählt der Host den Modus (in der Lobby jederzeit än
   `<dataDir>/ranking.json` gespeichert (Wertung, Spiele, Siege, Ø-Punkte, Bestwert). Sortiert wird nach Wertung: je Spiel
   `(Punkte − Punkte des Letzten) × Spieleranzahl / 10` (Letzter = 0), aufsummiert. und ist über „🏅 Rangliste“ bzw.
   `GET /api/ranking` abrufbar. Setzt aktivierte Benutzerkonten voraus.
+  Optional (bei der Registrierung oder in den Konto-Einstellungen) schreibt der Matrix-Bot dir im privaten Chat,
+  sobald sich dein Ranglistenplatz ändert – auch wenn du von anderen überholt wirst.
 
 ## Umgesetzte Regeln
 - 2 Skatblätter = 64 Karten (jede Karte doppelt), 2–7 Spieler; mit der **alternativen Variante** mehr (Standard-Limit 63, per `game.maxPlayers` einschränkbar).
@@ -343,6 +345,8 @@ When creating a room, the host chooses the mode (changeable in the lobby at any 
   `<dataDir>/ranking.json` (rating, games, wins, average points, best score). Sorted by rating: per game
   `(points − points of last place) × number of players / 10` (last place = 0), summed up. and is available via “🏅 Rangliste” or
   `GET /api/ranking`. Requires user accounts to be enabled.
+  Optionally (at registration or in the account settings) the Matrix bot messages you in your private chat
+  whenever your ranking position changes – including when others overtake you.
 
 ## Implemented rules
 - 2 Skat decks = 64 cards (each card twice), 2–7 players; more with the **alternative variant** (default limit 63, restrictable via `game.maxPlayers`).

@@ -103,7 +103,8 @@ accounts.start();
 // ranked: in der Raumliste, nur angemeldete Konten, keine Bots, Ergebnis zählt für die Rangliste
 const MODES = ['private', 'public', 'ranked'];
 const MODE_LABEL = { private: 'Privat', public: 'Öffentlich', ranked: 'Rangliste' };
-const ranking = createRanking({ dataDir: dataDirOf(CONFIG) });
+// Platzänderungen per Matrix-DM melden (nur Konten mit aktivierter Option, siehe accounts.notifyRankChanges)
+const ranking = createRanking({ dataDir: dataDirOf(CONFIG), onRankChanges: (ch) => accounts.notifyRankChanges(ch) });
 // Admin-Rolle: wird per Terminal vergeben (node admin-cli.js), siehe admins.js.
 const admins = createAdmins({ dataDir: dataDirOf(CONFIG) });
 const rankingHandler = (_req, res) => res.set('Cache-Control', 'no-store').json({ enabled: accounts.enabled, players: ranking.top(50) });

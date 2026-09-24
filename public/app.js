@@ -869,6 +869,7 @@ function openAcct(view){
     if (!delToken) showDelStep(1);
     $('rl-pw-label').classList.toggle('hidden', !account.hasPassword);
     $('rl-pw').value = ''; setMsg('rl-msg','');
+    $('set-notify-rank').checked = !!account.notifyRank; setMsg('notify-msg','');
     if (!rlToken) showRlStep(1);
   }
 }
@@ -945,7 +946,7 @@ $('reg-pw').addEventListener('input', updateRegBtn);
 $('reg-pw2').addEventListener('input', updateRegBtn);
 $('btn-reg-start').onclick = async () => {
   try {
-    const j = await api('/register/start', { username: $('reg-user').value.trim(), password: $('reg-pw').value });
+    const j = await api('/register/start', { username: $('reg-user').value.trim(), password: $('reg-pw').value, notifyRank: $('reg-notify-rank').checked });
     $('reg-pw').value = ''; $('reg-pw2').value = '';
     regToken = j.token; regExpires = j.expires;
     $('reg-code').textContent = j.code;
@@ -994,6 +995,18 @@ $('btn-logout-all').onclick = async () => {
   if (!confirm('Auf allen Geräten abmelden?')) return;
   try { await api('/me/logout-all', {}); } catch(_) {}
   setAccount(null); closeAcct(); reconnectWs(); toast('Überall abgemeldet.');
+};
+
+// --- Benachrichtigungen ---
+$('set-notify-rank').onchange = async () => {
+  const el = $('set-notify-rank'), on = el.checked;
+  el.disabled = true;
+  try {
+    const j = await api('/me/notify', { notifyRank: on });
+    account = j.user;
+    setMsg('notify-msg', on ? 'Benachrichtigung aktiviert.' : 'Benachrichtigung deaktiviert.', 'ok');
+  } catch (e) { el.checked = !on; setMsg('notify-msg', e.message, 'bad'); }
+  el.disabled = false;
 };
 
 // --- Matrix-Konto / -Chat ändern ---

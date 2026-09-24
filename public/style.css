@@ -21,6 +21,9 @@ h1{margin:.1em 0;font-size:2.4rem;letter-spacing:.04em;color:var(--gold)}
 h2{margin:.2em 0 .6em;color:var(--gold)}
 .sub{margin:.2em 0 1.2em;color:#cde}
 label{display:block;margin:.6em 0;font-size:.9rem;color:#cde}
+label.check{display:flex;align-items:flex-start;gap:.5em;cursor:pointer}
+label.check input{width:auto;margin:.15em 0 0;flex:none}
+.notify-zone{margin-top:1.2em}
 input{
   width:100%;margin-top:.3em;padding:.6em .7em;border-radius:9px;border:1px solid #345;
   background:#0c2a1e;color:#eef;font-size:1rem;

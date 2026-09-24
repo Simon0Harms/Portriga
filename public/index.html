@@ -256,6 +256,7 @@
           <label id="reg-pw2-label" class="hidden">Passwort wiederholen
             <input id="reg-pw2" type="password" autocomplete="new-password" />
           </label>
+          <label class="check"><input id="reg-notify-rank" type="checkbox" /> Per Matrix benachrichtigen, wenn sich mein Ranglistenplatz ändert</label>
           <div class="row"><button id="btn-reg-start" class="primary" disabled>Weiter</button></div>
           <p id="reg-msg" class="msg"></p>
         </div>
@@ -291,6 +292,13 @@
         <div class="row"><button id="btn-set-pw" class="primary">Passwort speichern</button></div>
         <p id="set-msg" class="msg"></p>
         <button id="btn-logout-all" class="link">Auf allen Geräten abmelden</button>
+
+        <div class="notify-zone">
+          <h3>Benachrichtigungen</h3>
+          <label class="check"><input id="set-notify-rank" type="checkbox" /> Per Matrix benachrichtigen, wenn sich mein Ranglistenplatz ändert</label>
+          <p class="hint">Der Bot schreibt dir dann in euren privaten Chat, sobald du nach einem Ranglisten-Spiel auf- oder absteigst.</p>
+          <p id="notify-msg" class="msg"></p>
+        </div>
 
         <div class="relink-zone">
           <h3>Matrix-Konto / -Chat ändern</h3>

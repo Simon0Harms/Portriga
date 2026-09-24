@@ -13,7 +13,9 @@ function gameRating(score, lastScore, playerCount) {
 }
 
 function createRanking(opts) {
-  const o = { dataDir: path.join(__dirname, 'data'), log: (...a) => console.log('[ranking]', ...a), ...opts };
+  // onRankChanges([{accountId, username, oldRank, newRank, rating}]) – nach jedem gewerteten Spiel,
+  // für alle Konten, deren Platz sich geändert hat (auch Nicht-Teilnehmer, die überholt wurden).
+  const o = { dataDir: path.join(__dirname, 'data'), log: (...a) => console.log('[ranking]', ...a), onRankChanges: null, ...opts };
   try { fs.mkdirSync(o.dataDir, { recursive: true, mode: 0o700 }); } catch (_) {}
   const FILE = path.join(o.dataDir, 'ranking.json');
   let db = { players: {} };
@@ -28,6 +30,13 @@ function createRanking(opts) {
     fs.renameSync(tmp, FILE);
   }
 
+  const cmp = (a, b) => b.rating - a.rating || b.wins - a.wins || b.avg - a.avg || b.games - a.games || a.username.localeCompare(b.username);
+  const view = (id, p) => ({ id, username: p.username, rating: p.rating || 0, games: p.games, wins: p.wins, points: p.points, best: p.best,
+    avg: p.games ? Math.round((p.points / p.games) * 10) / 10 : 0 });
+  function sorted() { return Object.entries(db.players).map(([id, p]) => view(id, p)).sort(cmp); }
+  /** Platz (1-basiert) je Konto-ID. */
+  function ranks() { const m = new Map(); sorted().forEach((p, i) => m.set(p.id, i + 1)); return m; }
+
   /** results: [{accountId, username, score}] – ein abgeschlossenes Spiel. */
   function recordGame(results) {
     const valid = (results || []).filter(r => r && r.accountId);
@@ -36,6 +45,7 @@ function createRanking(opts) {
     const last = Math.min(...valid.map(r => r.score));
     const n = valid.length;
     const now = Date.now();
+    const before = o.onRankChanges ? ranks() : null;
     for (const r of valid) {
       const p = db.players[r.accountId] || (db.players[r.accountId] = { username: r.username, games: 0, wins: 0, points: 0, best: null, rating: 0 });
       p.username = r.username;
@@ -47,21 +57,25 @@ function createRanking(opts) {
       p.lastPlayed = now;
     }
     save();
+    if (before) {
+      const changes = [];
+      for (const [id, newRank] of ranks()) {
+        const oldRank = before.get(id) || null;
+        if (oldRank !== newRank) changes.push({ accountId: id, username: db.players[id].username, oldRank, newRank, rating: db.players[id].rating || 0 });
+      }
+      if (changes.length) { try { o.onRankChanges(changes); } catch (e) { o.log('onRankChanges-Fehler:', e.message); } }
+    }
     return true;
   }
 
   /** Sortiert: Wertung, dann Siege, dann Ø-Punkte, dann Spiele. */
   function top(limit = 50) {
-    return Object.values(db.players)
-      .map(p => ({ username: p.username, rating: p.rating || 0, games: p.games, wins: p.wins, points: p.points, best: p.best,
-        avg: p.games ? Math.round((p.points / p.games) * 10) / 10 : 0 }))
-      .sort((a, b) => b.rating - a.rating || b.wins - a.wins || b.avg - a.avg || b.games - a.games || a.username.localeCompare(b.username))
-      .slice(0, limit);
+    return sorted().slice(0, limit).map(({ id, ...p }) => p);
   }
 
   function removeUser(id) { if (db.players[id]) { delete db.players[id]; save(); } }
 
-  return { recordGame, top, removeUser, file: FILE };
+  return { recordGame, top, ranks, removeUser, file: FILE };
 }
 
 module.exports = { createRanking, gameRating };

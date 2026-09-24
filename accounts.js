@@ -181,7 +181,7 @@ function createAccounts(opts) {
   function clearSession(res) {
     res.append('Set-Cookie', `${o.cookieName}=; Path=${cookiePath()}; HttpOnly; SameSite=Lax; Max-Age=0${o.cookieSecure ? '; Secure' : ''}`);
   }
-  function publicUser(u) { return u ? { id: u.id, username: u.username, mxid: u.mxid, hasPassword: !!u.hash, needsRelink: !!u.needsRelink, createdAt: u.createdAt } : null; }
+  function publicUser(u) { return u ? { id: u.id, username: u.username, mxid: u.mxid, hasPassword: !!u.hash, needsRelink: !!u.needsRelink, notifyRank: !!u.notifyRank, createdAt: u.createdAt } : null; }
 
   // ---- Outbox (App -> Sidecar) ----
   function enqueue(roomId, body, extra) {
@@ -325,12 +325,12 @@ function createAccounts(opts) {
         enqueue(roomId, '🃏 Portriga\nDer Benutzername wurde inzwischen vergeben. Bitte registriere dich mit einem anderen Namen.');
         return 'nametaken';
       }
-      const u = { id: db.nextId++, username: p.username, mxid: sender, dmRoomId: roomId, salt: p.salt || null, hash: p.hash || null, sessVer: 0, createdAt: now };
+      const u = { id: db.nextId++, username: p.username, mxid: sender, dmRoomId: roomId, salt: p.salt || null, hash: p.hash || null, sessVer: 0, notifyRank: !!p.notifyRank, createdAt: now };
       db.users.push(u);
       p.doneUserId = u.id; delete p.salt; delete p.hash;
       save();
       o.log('Konto angelegt:', u.username, u.mxid);
-      enqueue(roomId, `🃏 Portriga\nWillkommen, ${u.username}! Dein Konto ist aktiv und mit ${sender} verknüpft.\nDu kannst dich künftig per Login-Link über diesen Chat anmelden${u.hash ? ' oder mit deinem Passwort' : ''}.\nTipp: Schreib mir „login“, um jederzeit einen Login-Link zu bekommen.${o.announceRoom ? `\n📢 Neue öffentliche und Ranglisten-Spiele findest du im Raum ${o.announceRoom}${o.announceLink ? ' (' + o.announceLink + ')' : ''}.` : ''}`);
+      enqueue(roomId, `🃏 Portriga\nWillkommen, ${u.username}! Dein Konto ist aktiv und mit ${sender} verknüpft.\nDu kannst dich künftig per Login-Link über diesen Chat anmelden${u.hash ? ' oder mit deinem Passwort' : ''}.\nTipp: Schreib mir „login“, um jederzeit einen Login-Link zu bekommen.${u.notifyRank ? '\n🏅 Ich benachrichtige dich hier, wenn sich dein Ranglistenplatz ändert (abschaltbar in den Konto-Einstellungen).' : ''}${o.announceRoom ? `\n📢 Neue öffentliche und Ranglisten-Spiele findest du im Raum ${o.announceRoom}${o.announceLink ? ' (' + o.announceLink + ')' : ''}.` : ''}`);
       return 'registered';
     }
     const dm = body.match(DELETE_RE);
@@ -422,6 +422,7 @@ function createAccounts(opts) {
       const token = crypto.randomBytes(24).toString('base64url');
       const p = { token, username, codeHash: hmac('code:' + code.replace(/^PR-|-/g, '')), expires: Date.now() + o.codeTtlMs, ip, createdAt: Date.now() };
       if (password) Object.assign(p, hashPw(password));
+      if (req.body && req.body.notifyRank === true) p.notifyRank = true;
       db.pending.push(p); save();
       res.json({ ok: true, token, code, botMxid: o.botMxid, matrixTo: 'https://matrix.to/#/' + o.botMxid, expires: p.expires });
     });
@@ -515,6 +516,15 @@ function createAccounts(opts) {
       res.json({ ok: true, user: publicUser(u) });
     });
 
+    // Benachrichtigungen (per Matrix-DM) ein-/ausschalten
+    r.post('/me/notify', (req, res) => {
+      const u = req.user;
+      const b = req.body || {};
+      if (typeof b.notifyRank !== 'boolean') return res.status(422).json({ error: 'Ungültige Einstellung.' });
+      u.notifyRank = b.notifyRank; save();
+      res.json({ ok: true, user: publicUser(u) });
+    });
+
     // Konto löschen. Mit Matrix-Verknüpfung: Bestätigung per DM nötig; sonst sofort.
     r.post('/me/delete', (req, res) => {
       const u = req.user;
@@ -575,6 +585,24 @@ function createAccounts(opts) {
     app.use('/api/account', r);
   }
 
+  // ---- Ranglisten-Benachrichtigung (App -> Matrix-DM, nur bei aktivierter Option) ----
+  /** changes: [{accountId, oldRank, newRank, rating}] aus ranking.onRankChanges. Rückgabe: Anzahl eingereihter DMs. */
+  function notifyRankChanges(changes) {
+    if (!enabled) return 0;
+    let n = 0;
+    for (const c of changes || []) {
+      const u = db.users.find(x => String(x.id) === String(c.accountId));
+      if (!u || !u.notifyRank || !u.dmRoomId || u.needsRelink) continue;
+      const up = c.oldRank && c.newRank < c.oldRank;
+      const head = !c.oldRank ? `🏅 Du bist neu in der Rangliste – Platz ${c.newRank}.`
+        : up ? `🏅 Du bist in der Rangliste aufgestiegen: Platz ${c.oldRank} → ${c.newRank}.`
+        : `📉 Du bist in der Rangliste abgerutscht: Platz ${c.oldRank} → ${c.newRank}.`;
+      const link = PUBLIC_BASE ? `\nRangliste: ${PUBLIC_BASE}/` : '';
+      if (enqueue(u.dmRoomId, `🃏 Portriga\n${head}\nWertung: ${c.rating}${link}\n(Abschalten in den Konto-Einstellungen.)`)) n++;
+    }
+    return n;
+  }
+
   let timer = null;
   function start() {
     if (!enabled) { o.log('deaktiviert (accounts.botMxid nicht gesetzt).'); return; }
@@ -586,7 +614,7 @@ function createAccounts(opts) {
   function stop() { if (timer) clearInterval(timer); timer = null; }
 
   return {
-    enabled, mount, start, stop, processInbox, handleInbound,
+    enabled, mount, start, stop, processInbox, handleInbound, notifyRankChanges,
     userFromReq, isRegisteredName, usernameAvailable, publicUser,
     paths: { DB_FILE, INBOX, OUTBOX },
     _db: () => db,
