@@ -95,7 +95,7 @@ const MODE_LABEL = { private:'🔒 Privat', public:'🌐 Öffentlich', ranked:'�
 $('btn-create').onclick = () => {
   saveName();
   const mode = $('create-mode').value;
-  if (mode === 'ranked' && !account) return toast('Für Ranglisten-Spiele bitte zuerst anmelden.');
+  if (mode === 'ranked' && !account) return openGuestRanked();
   send({ type:'createRoom', name: myName, mode });
 };
 function renderRoomList(list){
@@ -108,8 +108,8 @@ function renderRoomList(list){
     li.appendChild(nm);
     const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = MODE_LABEL[r.mode] || r.mode; li.appendChild(tag);
     const b = document.createElement('button'); b.textContent = 'Beitreten';
-    if (r.mode === 'ranked' && !account){ b.disabled = true; b.title = 'Nur mit angemeldetem Konto'; }
-    b.onclick = () => { saveName(); send({ type:'joinRoom', code: r.code, name: myName }); };
+    if (r.mode === 'ranked' && !account){ b.title = 'Nur mit angemeldetem Konto'; b.onclick = () => openGuestRanked(); }
+    else b.onclick = () => { saveName(); send({ type:'joinRoom', code: r.code, name: myName }); };
     li.appendChild(b);
     ul.appendChild(li);
   }
@@ -728,6 +728,15 @@ function closeAcct(){ if (account && account.needsRelink) return; $('acct-modal'
 $('acct-close').onclick = closeAcct;
 $('acct-modal').addEventListener('click', e => { if (e.target === $('acct-modal')) closeAcct(); });
 $('btn-show-login').onclick = () => openAcct('login');
+// Gast klickt auf ein Ranglisten-Spiel -> Hinweis-Dialog mit Angebot, ein Konto zu erstellen
+function openGuestRanked(){ $('guest-ranked-modal').classList.remove('hidden'); setTimeout(()=>$('btn-gr-register').focus(), 30); }
+function closeGuestRanked(){ $('guest-ranked-modal').classList.add('hidden'); }
+$('btn-gr-register').onclick = () => { closeGuestRanked(); openAcct('register'); };
+$('btn-gr-login').onclick = () => { closeGuestRanked(); openAcct('login'); };
+$('btn-gr-cancel').onclick = closeGuestRanked;
+$('gr-close').onclick = closeGuestRanked;
+$('guest-ranked-modal').addEventListener('click', e => { if (e.target === $('guest-ranked-modal')) closeGuestRanked(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('guest-ranked-modal').classList.contains('hidden')) closeGuestRanked(); });
 $('btn-show-register').onclick = () => openAcct('register');
 $('btn-to-register').onclick = () => openAcct('register');
 $('btn-acct-settings').onclick = () => openAcct('settings');

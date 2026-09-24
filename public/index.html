@@ -189,6 +189,21 @@
     </div>
   </div>
 
+  <!-- Hinweis-Dialog: Gast möchte einem Ranglisten-Spiel beitreten -->
+  <div id="guest-ranked-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="gr-title">
+    <div class="panel">
+      <button id="gr-close" class="link modal-x" title="Schließen" aria-label="Schließen">✕</button>
+      <h2 id="gr-title">🏅 Ranglisten-Spiel</h2>
+      <p>Ranglisten-Spielen können nur registrierte Benutzer beitreten – nur so lassen sich die Ergebnisse eindeutig deinem Konto in der Rangliste zuordnen.</p>
+      <p>Möchtest du dir ein Konto erstellen?</p>
+      <div class="row">
+        <button id="btn-gr-register" class="primary">Konto erstellen</button>
+        <button id="btn-gr-login">Ich habe schon ein Konto</button>
+        <button id="btn-gr-cancel" class="link">Abbrechen</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Konto-Dialog: Anmelden / Registrieren / Konto -->
   <div id="acct-modal" class="modal hidden">
     <div class="panel">
