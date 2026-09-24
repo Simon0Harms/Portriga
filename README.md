@@ -1,5 +1,7 @@
 # Portriga – Online-Kartenspiel
 
+🇬🇧 *English version: see [below](#portriga--online-card-game).*
+
 Server-autoritatives Mehrspieler-Kartenspiel (Stichvorhersage) nach den Regeln von
 <http://portriga.bplaced.net/>. Node.js + WebSockets, ohne Datenbank.
 Deployment als Proxmox-Debian-LXC.
@@ -286,4 +288,298 @@ Getestet ist bisher die Signalisierung automatisiert; die Medien-/Mikrofon-Ebene
 zwei echten Browsern über HTTPS geprüft werden.
 
 ## Lizenz
+GPL-3.0-or-later.
+
+---
+
+# Portriga – Online Card Game
+
+*English translation of the German README above.*
+
+Server-authoritative multiplayer card game (trick prediction) following the rules at
+<http://portriga.bplaced.net/>. Node.js + WebSockets, no database.
+Deployed as a Proxmox Debian LXC.
+
+Includes a **room chat** (usable in lobby and game): a collapsible panel with history
+(preserved on reconnect), unread counter and subtle system messages (joins, game start).
+The history is kept in RAM only and limited to the last 60 messages.
+There is also a **voice chat** as a WebRTC mesh (details below).
+
+## Game modes
+When creating a room, the host chooses the mode (changeable in the lobby at any time):
+- **Private** – as before: join only via code, direct link or QR code.
+- **Public** – the room appears on the start screen in the “open rooms” list; anyone (including guests) can join.
+- **Ranked** – also listed, but only for registered accounts and without bots. The final result is stored in
+  `<dataDir>/ranking.json` (games, wins, average points, best score) and is available via “🏅 Rangliste” or
+  `GET /api/ranking`. Requires user accounts to be enabled.
+
+## Implemented rules
+- 2 Skat decks = 64 cards (each card twice), 2–7 players; more with the **alternative variant** (default limit 63, restrictable via `game.maxPlayers`).
+- Sequence of cards per player per round: **1→7 ascending, then 8 exactly *N* times (N = number of players), then 7→1 descending.** The dealer moves clockwise each round.
+- Alternative variant (> 7 players): maximum card count M = 64 / N rounded down, minus 1 if it divides evenly (= `floor(63/N)`): 8 → 7, 9 → 7, 10 → 6, 12 → 5. Round sequence is then 1→M−1, M exactly N times, M−1→1.
+- After dealing, one card is turned up as **trump** (valid for the whole round).
+- **Bidding** in turn starting left of the dealer, dealer last (0 up to the number of cards).
+- The first bidder leads the first trick; afterwards the winner of the previous trick leads.
+- **Follow suit + must trump:** follow the led suit if you can; otherwise play trump if you have one; otherwise play anything.
+- **Special rule “the 2nd beats the 1st”**: with cards of equal value, the one played *later* wins the trick.
+- **Scoring:** bid met exactly → `10 + tricks·3` (also for 0). Missed → `−|bid − tricks|·3`.
+- Whoever has the most points after the last round wins.
+
+### Deliberate assumptions (the rules page is not 100 % unambiguous)
+1. **Card ranking** = picture order on the rules page: **Ace, 7, King, Queen, Jack, 10, 9, 8** (Ace highest). If that was only display order and not ranking: reorder the constant `RANKS` in `game.js` – one line.
+2. **Must trump** interpreted as “follow suit, otherwise trump, otherwise free” (the common reading of “Bedienzwang + Trumpfzwang”). Changeable in `game.legalCards()`.
+
+Not implemented (deliberately, since not required by the rules): a “sum of bids ≠ number of tricks” restriction for the dealer. Bots are only a simple placeholder for solo testing, not a strong AI.
+
+## Project structure
+```
+config.json         central configuration (from config.example.json)
+game.js            rules engine (pure, testable)
+bots.js            simple placeholder bot
+server.js          Express + WebSocket, rooms, bot control, reconnect
+accounts.js        user accounts: registration via Matrix DM, login, sessions
+ranking.js         leaderboard for ranked rooms (data/ranking.json)
+admins.js          admin role (data/admins.json), admin-cli.js = management via terminal
+config.js          configuration loading (config.json + ENV)
+public/            frontend (index.html, style.css, app.js) + regeln.html (standalone rules page)
+test/simulate.js   headless full-game simulation (npm test)
+deploy/            Proxmox LXC + systemd + nginx + coturn/ENV (voice)
+deploy/matrix/     Matrix bot (sidecar) for registration and login links
+```
+
+## Kicking players & admin role
+In the lobby, anyone can put a fellow player up for a **vote kick**. All connected humans except the
+affected player may vote; the player is kicked with **more than 50 % yes** (60 s time limit). Kicked
+players cannot rejoin the room.
+
+**Admins** kick immediately without a vote and cannot be removed by vote kick themselves. The role
+is tied to a (registered) account and can only be assigned via terminal:
+```bash
+cd /opt/portriga
+sudo -u portriga node admin-cli.js add <username>     # grant role
+sudo -u portriga node admin-cli.js remove <username>  # revoke role
+sudo -u portriga node admin-cli.js list               # list admins
+```
+Stored in `data/admins.json` (account ID); the running server picks up changes without a restart.
+
+## Muting players (text & voice chat)
+In the lobby and during a game, anyone can put a fellow player up for a **mute vote** via 🔇 in the room chat.
+All connected humans except the affected player may vote; takes effect with **more than 50 % yes** (60 s time limit).
+If only **2 players** are in the room, the mute applies immediately. Unmuting works the same way.
+
+Muted players cannot write; in voice they may only listen (their audio is muted for all receivers,
+their microphone is disabled client-side). The mute applies to the room and persists across
+reconnect/rejoin. Admins mute/unmute immediately and cannot be muted by vote.
+
+## Running locally
+```bash
+npm install
+npm start           # http://localhost:3000
+npm test            # 1200 simulated full games (rules/crash test)
+```
+For solo testing: create a room → “+ Bot” once or twice → “Spiel starten” (start game).
+
+## Configuration (central in /opt/portriga)
+
+All runtime settings live in **`/opt/portriga/config.json`**. Order of
+precedence: built-in defaults < `config.json` < environment variables (`portriga.env`).
+
+```jsonc
+{
+  "port": 3000,
+  "ice": {                       // WebRTC voice
+    "stun": "stun:stun.l.google.com:19302",
+    "turn": null                 // or: { "url":"turn:your-domain.com:3478", "user":"portriga", "pass":"…" }
+  },
+  "chat": { "historyMax": 60, "textMax": 300 },
+  "bots": { "moveDelayMs": 700 },   // bot move speed (ms)
+  "game": {
+    "ranks": ["A","7","K","D","B","10","9","8"],  // card ranking high->low (exactly 8, unique)
+    "maxPlayers": 63                               // seats per room (2–63); > 7 = alternative variant
+  }
+}
+```
+The **card ranking** (the flagged assumption from the rules page) can be reordered here without
+code changes. `portriga.env` remains useful for secrets (e.g. `TURN_PASS`),
+since ENV takes precedence.
+
+This puts the entire “source of truth” in `/opt/portriga`:
+- `config.json` – app configuration (generated from `config.example.json`, not overwritten by updates)
+- `portriga.env` – environment variables/secrets (from `deploy/portriga.env.example`)
+- `turnserver.conf` – coturn config (from `deploy/coturn-example.conf`); `/etc/turnserver.conf` is a symlink to it
+- nginx: `/etc/nginx/sites-enabled/portriga` is a symlink to `deploy/nginx-portriga.conf`
+
+After changing `config.json`/`portriga.env`: `systemctl restart portriga`.
+`config.json`, `portriga.env` and `turnserver.conf` are in `.gitignore` – a `git pull`
+does not overwrite your real values; the templates (`*.example.*`) get updated.
+
+## Security / anti-cheat
+All game logic runs **server-side**. Each client only receives a redacted view
+(`game.viewFor`): its own hand in full, only the card count of others. Other players'
+cards never leave the server. The legality of every move is checked server-side.
+
+## User accounts (registration via Matrix)
+
+Optional. Without configuration everything stays as before (guests only). With an account, the player name
+is permanently bound to the username (✓ in the lobby); guests cannot use registered names.
+
+**Registration**
+1. Choose a username – availability is checked live (case-insensitive;
+   the name is reserved while a registration is in progress).
+2. Optionally set a password (≥ 8 characters).
+3. The app shows a code (`PR-XXXX-XXXX`, valid for 15 min). Send it as a **direct message to the
+   Portriga bot**. The **sender MXID** is linked to the account – the homeserver
+   authenticates the sender, which proves that the MXID belongs to the user.
+4. The app detects the delivery automatically and logs the user in.
+
+**Login:** username *or* MXID + password, or a **login link via Matrix** (5 min,
+single use). Alternatively write `login` to the bot. The password can be set, changed or
+removed in the account dialog; “Sign out on all devices” invalidates all sessions.
+
+**Changing the Matrix account / chat:** in the account dialog under “Matrix-Konto / -Chat ändern”
+(with password confirmation if a password is set), request a code `MX-XXXX-XXXX` (valid for 15 min)
+and send it **from the desired MXID** as a DM to the bot. Sender MXID and room are re-linked;
+if the code comes from the existing MXID but a different chat, only the room is switched.
+An MXID already belonging to another account is rejected. The old chat is notified and the
+bot leaves it (unless another account uses it); pending login links and deletion requests of
+the old MXID expire.
+
+**Deleting an account:** in the account dialog under “Konto löschen” (with password prompt
+if a password is set). If the account is linked to Matrix, the bot sends a confirmation command
+via DM (`löschen XXXX-XXXX`, valid for 10 min, also shown in the app). Only once this
+message arrives **from the linked MXID** is the account permanently deleted; the bot
+says goodbye and **leaves the DM room** (`room_leave` + `room_forget`). Open sessions
+and login links become invalid, and the username is free again.
+
+**User leaves the chat with the bot:** the sidecar reports the departure to the app and also leaves
+the now-empty room. Accounts **with a password** only lose the chat link
+(“login” from a new chat restores it). Accounts **without a password**: if a valid
+session cookie still exists, the app forces linking a new chat on the next visit
+(code `MX-…` or “login” from the new chat). If the user logs out first or the last
+cookie expires, the account is deleted. If there is no valid cookie left, it is deleted immediately.
+
+**Architecture** (spool principle as in the KKk58 sidecar; the Node app has no Matrix dependency):
+```
+Browser ──HTTP/WS──▶ server.js + accounts.js ──▶ data/matrix-outbox/ ──▶ portriga_matrix_bot.py ──▶ Matrix
+                                              ◀── data/matrix-inbox/  ◀──  (E2EE, matrix-nio)   ◀── user's DM
+```
+Data: `data/accounts.json` (accounts, scrypt hashes), `data/secret.key` (HMAC for sessions/codes).
+Back up both; `data/` is in `.gitignore`.
+
+**Setup**
+1. Create a Matrix account for the bot (e.g. `@portrigabot:example.org`).
+2. `WANT_MATRIX=1 ./deploy/provision.sh` (or manually: `apt install python3-pip libolm-dev`,
+   `pip install "matrix-nio[e2e]" --break-system-packages`, install the unit from `deploy/matrix/`).
+3. Fill in `/opt/portriga/matrix/portriga-matrix.env` from `deploy/matrix/env.example`.
+4. In `config.json`:
+   ```json
+   "accounts": { "botMxid": "@portrigabot:example.org", "publicUrl": "https://spiel.example.org" }
+   ```
+   `publicUrl` (including base path) is mandatory for login links – they are deliberately **not** derived
+   from host headers (otherwise they could be redirected to foreign domains via header spoofing).
+5. `systemctl restart portriga && systemctl enable --now portriga-matrix`
+
+Notes: with `PORTRIGA_REQUIRE_ENCRYPTION=1` (default) the bot only replies in
+end-to-end encrypted chats; incoming codes are accepted regardless. Back up the key store
+`/opt/portriga/matrix-store` – if it is lost, the bot has to log in again
+(put the password back into the env file). Tests: `npm test` (incl. `test/accounts.test.js`, simulates the bot).
+
+## Deployment as a Proxmox Debian 13 LXC (Trixie)
+
+### 1. Create the container (on the Proxmox host, as root)
+```bash
+# values can be overridden via env
+CTID=140 MEMORY=1024 CORES=2 BRIDGE=vmbr0 ./deploy/proxmox-create-lxc.sh
+```
+The script downloads the Debian 13 template if needed, creates an unprivileged container
+and starts it. Then note the container IP:
+```bash
+pct exec 140 -- ip -4 addr show eth0 | grep inet
+```
+
+### 2. Get the app into the container – two ways
+
+**a) Via Git (if you publish the repo, e.g. as Simon0Harms):**
+```bash
+pct exec 140 -- bash -c 'apt-get update && apt-get install -y git \
+  && git clone <YOUR_REPO_URL> /opt/portriga'
+```
+
+**b) By copying from the Proxmox host (without Git):**
+```bash
+# build an archive without node_modules in the project folder
+tar --exclude=node_modules --exclude=.git -czf /tmp/portriga.tar.gz -C . .
+pct exec 140 -- mkdir -p /opt/portriga
+pct push 140 /tmp/portriga.tar.gz /opt/portriga/portriga.tar.gz
+pct exec 140 -- tar -xzf /opt/portriga/portriga.tar.gz -C /opt/portriga
+pct exec 140 -- rm /opt/portriga/portriga.tar.gz
+```
+
+### 3. Provisioning (inside the container)
+```bash
+# Node + service on port 3000 only:
+pct exec 140 -- bash /opt/portriga/deploy/provision.sh
+
+# OR with nginx reverse proxy on port 80 (recommended):
+pct exec 140 -- bash -c 'WANT_NGINX=1 bash /opt/portriga/deploy/provision.sh'
+```
+Afterwards reachable at `http://<container-ip>/` (with nginx) or `:3000` (without).
+
+> **Node.js on Debian 13:** by default Node 20 LTS is installed from the Debian repo
+> (sufficient for this app). For a newer LTS line: `USE_NODESOURCE=1 NODE_MAJOR=22 bash …provision.sh`.
+> The provision script deliberately uses the keyring/deb822 approach instead of the `setup_x.x` script, because
+> the latter can fail on Trixie due to the old SHA-1 repo key (Debian 13 verifies with `sqv`, without SHA-1).
+
+### Operation
+```bash
+pct exec 140 -- systemctl status portriga
+pct exec 140 -- journalctl -u portriga -f
+pct exec 140 -- systemctl restart portriga
+```
+Updating: bring the new files to `/opt/portriga`, then
+`systemctl restart portriga` (if dependencies changed, run `npm ci --omit=dev` first).
+
+### HTTPS
+State lives in RAM only – a restart ends running games. For public operation,
+extend `nginx-portriga.conf` with a certificate (certbot/ACME) and add `listen 443 ssl;`.
+
+## Voice chat (WebRTC mesh)
+
+Voice chat runs as a **WebRTC mesh** (everyone with everyone), suitable for 2–7 players. The
+existing WebSocket server only serves as **signaling** (SDP/ICE are forwarded to exactly one
+fellow player in the same room; the sender is set server-side and cannot be
+spoofed). Audio flows directly between browsers, not through the server.
+Connection setup follows the *Perfect Negotiation* pattern; mute and a simple
+speaking indicator (WebAudio) are built in.
+
+**Two hard requirements:**
+1. **HTTPS is mandatory.** `getUserMedia` (microphone) only works in a secure context
+   (exception: `http://localhost` for local testing). For operation, use nginx with a
+   certificate (see the HTTPS note above).
+2. **TURN server (coturn) for reliable connections.** Plain STUN fails as soon as
+   someone is behind symmetric NAT/CGNAT.
+
+**Setting up coturn (in the same or a separate LXC):**
+```bash
+apt-get install -y coturn
+# set TURNSERVER_ENABLED=1 in /etc/default/coturn
+cp /opt/portriga/deploy/coturn-example.conf /etc/turnserver.conf   # then adjust values
+systemctl enable --now coturn
+```
+Then give the Node service the ICE data – copy `deploy/portriga.env.example` to
+`/opt/portriga/portriga.env`, set `TURN_URL/TURN_USER/TURN_PASS` (must match
+`user=`/`realm=` in `turnserver.conf`), then `systemctl restart portriga`.
+The server delivers the ICE configuration to the clients automatically.
+
+**Ports to open (firewall/LXC/router):** `3478/udp`+`3478/tcp` (TURN/STUN),
+optionally `5349/tcp` (TURN over TLS), plus the media relay range `49152-65535/udp`.
+
+**Limits (deliberate):** a mesh only scales for small groups – with 7 participants each holds
+~6 audio connections (roughly 150–250 kbit/s per direction). Bots do not take part.
+If the WebSocket connection drops, voice ends and has to be rejoined. There is no remote
+mute indicator (whether others have muted themselves), only your own.
+So far only the signaling has been tested automatically; the media/microphone layer must be verified with
+two real browsers over HTTPS.
+
+## License
 GPL-3.0-or-later.
