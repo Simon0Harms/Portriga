@@ -47,7 +47,7 @@
     'Keine öffentlichen Räume offen.': 'No public rooms open.',
     '🏅 Rangliste anzeigen': '🏅 Show leaderboard',
     '🏅 Rangliste ausblenden': '🏅 Hide leaderboard',
-    '#': '#', 'Siege': 'Wins', 'Spiele': 'Games', 'Ø Punkte': 'Avg. points', 'Best': 'Best',
+    '#': '#', 'Wertung': 'Rating', 'Summe je Spiel: (Punkte − Punkte des Letzten) × Spieleranzahl / 10': 'Sum per game: (points − points of last place) × number of players / 10', 'Siege': 'Wins', 'Spiele': 'Games', 'Ø Punkte': 'Avg. points', 'Best': 'Best',
     'Noch keine Ranglisten-Spiele.': 'No ranked games yet.',
     '📖 Spielregeln': '📖 Rules',
     'Ideen oder Fehler gefunden?': 'Ideas or found a bug?',

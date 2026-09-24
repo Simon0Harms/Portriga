@@ -16,7 +16,8 @@ Beim Erstellen eines Raums wählt der Host den Modus (in der Lobby jederzeit än
 - **Privat** – wie bisher: Beitritt nur per Code, Direktlink oder QR-Code.
 - **Öffentlich** – der Raum erscheint auf dem Startbildschirm in der Liste „offene Räume“; jeder (auch Gäste) kann beitreten.
 - **Rangliste** – ebenfalls gelistet, aber nur für angemeldete Konten und ohne Bots. Das Endergebnis wird in
-  `<dataDir>/ranking.json` gespeichert (Spiele, Siege, Ø-Punkte, Bestwert) und ist über „🏅 Rangliste“ bzw.
+  `<dataDir>/ranking.json` gespeichert (Wertung, Spiele, Siege, Ø-Punkte, Bestwert). Sortiert wird nach Wertung: je Spiel
+  `(Punkte − Punkte des Letzten) × Spieleranzahl / 10` (Letzter = 0), aufsummiert. und ist über „🏅 Rangliste“ bzw.
   `GET /api/ranking` abrufbar. Setzt aktivierte Benutzerkonten voraus.
 
 ## Umgesetzte Regeln
@@ -310,7 +311,8 @@ When creating a room, the host chooses the mode (changeable in the lobby at any 
 - **Private** – as before: join only via code, direct link or QR code.
 - **Public** – the room appears on the start screen in the “open rooms” list; anyone (including guests) can join.
 - **Ranked** – also listed, but only for registered accounts and without bots. The final result is stored in
-  `<dataDir>/ranking.json` (games, wins, average points, best score) and is available via “🏅 Rangliste” or
+  `<dataDir>/ranking.json` (rating, games, wins, average points, best score). Sorted by rating: per game
+  `(points − points of last place) × number of players / 10` (last place = 0), summed up. and is available via “🏅 Rangliste” or
   `GET /api/ranking`. Requires user accounts to be enabled.
 
 ## Implemented rules

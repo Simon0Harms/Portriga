@@ -125,7 +125,7 @@ async function loadRanking(){
     const tb = $('ranking-table').querySelector('tbody'); tb.innerHTML = '';
     (d.players || []).forEach((p, i) => {
       const tr = document.createElement('tr');
-      for (const v of [i+1, p.username, p.wins, p.games, p.avg, p.best ?? '–']){
+      for (const v of [i+1, p.username, p.rating ?? 0, p.wins, p.games, p.avg, p.best ?? '–']){
         const td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
       }
       tb.appendChild(tr);
