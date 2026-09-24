@@ -98,6 +98,8 @@ button.link{background:none;border:none;color:var(--accent);padding:.3em;text-de
 .card .s{font-size:1.5rem;text-align:right;line-height:1}
 .card .who{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:.7rem;color:#cde;white-space:nowrap}
 .card.win{outline:3px solid var(--gold)}
+.card.img{padding:0;border:1px solid #bbb;border-radius:0;background:#fff;overflow:visible}
+.card.img img{width:100%;height:100%;display:block;border-radius:inherit;pointer-events:none}
 
 #turn-banner{font-size:.95rem;color:var(--gold);min-height:1.3em;font-weight:600}
 
