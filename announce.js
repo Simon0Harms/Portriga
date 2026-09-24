@@ -11,6 +11,11 @@
  * Schutz vor Spam: je Ersteller (Konto bzw. IP) höchstens eine Ankündigung pro
  * `perCreatorSec`, insgesamt höchstens `maxPerHour`. Jeder Raum wird nur einmal
  * angekündigt.
+ *
+ * Rückzug: Startet das Spiel (oder wird der Raum geschlossen bzw. wieder privat),
+ * legt `retract(ref)` einen Auftrag in die Outbox, mit dem der Sidecar seine eigene
+ * Ankündigung per Matrix-Redaction entfernt. `ref` ist die von `announce()`
+ * zurückgegebene Auftrags-ID; der Sidecar merkt sich dazu die event_id.
  */
 const fs = require('fs');
 const path = require('path');
@@ -40,16 +45,18 @@ function createAnnouncer(opts) {
   const lastByCreator = new Map();
   let recent = [];
 
-  function enqueue(body) {
+  function writeJob(extra) {
     try {
       fs.mkdirSync(o.outboxDir, { recursive: true, mode: 0o700 });
       const id = Date.now().toString(36) + '-' + crypto.randomBytes(8).toString('hex');
       const tmp = path.join(o.outboxDir, '.' + id + '.tmp');
-      fs.writeFileSync(tmp, JSON.stringify({ id, roomId: room, body, createdAt: Date.now(), announce: true }), { mode: 0o600 });
+      fs.writeFileSync(tmp, JSON.stringify(Object.assign({ id, roomId: room, createdAt: Date.now() }, extra)), { mode: 0o600 });
       fs.renameSync(tmp, path.join(o.outboxDir, id + '.json'));
-      return true;
-    } catch (e) { o.log('Outbox-Fehler:', e.message); return false; }
+      return id;
+    } catch (e) { o.log('Outbox-Fehler:', e.message); return null; }
   }
+
+  function enqueue(body) { return writeJob({ body, announce: true }); }
 
   function text(r) {
     const ranked = r.mode === 'ranked';
@@ -62,7 +69,7 @@ function createAnnouncer(opts) {
     return lines.join('\n');
   }
 
-  /** r: { code, mode, host, players, maxPlayers, creatorKey } – Rückgabe: true = eingereiht */
+  /** r: { code, mode, host, players, maxPlayers, creatorKey } – Rückgabe: Auftrags-ID (Referenz für retract) oder false */
   function announce(r) {
     if (!enabled || !r || (r.mode !== 'public' && r.mode !== 'ranked')) return false;
     const t = o.now();
@@ -73,14 +80,21 @@ function createAnnouncer(opts) {
       const last = lastByCreator.get(key);
       if (last && t - last < o.perCreatorSec * 1000) { o.log('Ersteller-Limit – nicht angekündigt:', r.code); return false; }
     }
-    if (!enqueue(text(r))) return false;
+    const id = enqueue(text(r));
+    if (!id) return false;
     recent.push(t);
     if (key) lastByCreator.set(key, t);
     if (lastByCreator.size > 5000) for (const [k, v] of lastByCreator) if (t - v > o.perCreatorSec * 1000) lastByCreator.delete(k);
-    return true;
+    return id;
   }
 
-  return { enabled, room: enabled ? room : '', link, announce, text };
+  /** Ankündigung zurückziehen (Redaction durch den Sidecar). ref = Rückgabe von announce(). */
+  function retract(ref, reason) {
+    if (!enabled || !ref || typeof ref !== 'string') return false;
+    return !!writeJob({ retract: ref, reason: clean(reason || 'Spiel gestartet', 80) });
+  }
+
+  return { enabled, room: enabled ? room : '', link, announce, retract, text };
 }
 
 module.exports = { createAnnouncer, clean };

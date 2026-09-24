@@ -294,7 +294,18 @@ class PortrigaBot:
                 self.log("Beitritt fehlgeschlagen:", rid, repr(e))
 
     # ---- ausgehend ----
-    async def _send_announce(self, target, body):
+    ANNOUNCED_MAX_AGE = 2 * 86400  # gemerkte Ankündigungen nach 2 Tagen vergessen
+
+    def _remember_announce(self, ref, rid, eid):
+        """event_id einer Ankündigung merken, damit sie später redigiert werden kann."""
+        ann = self.state.setdefault("announced", {})
+        now = time.time()
+        for k in [k for k, v in ann.items() if now - v.get("ts", 0) > self.ANNOUNCED_MAX_AGE]:
+            ann.pop(k, None)
+        ann[ref] = {"room": rid, "event": eid, "ts": now}
+        save_state(self.cfg.state_file, self.state)
+
+    async def _send_announce(self, target, body, ref=None):
         if not self.cfg.announce_room or target != self.cfg.announce_room:
             raise _PlaintextRefused(target)  # nur der konfigurierte Raum ist erlaubt
         rid = await self._resolve_announce()
@@ -304,6 +315,22 @@ class PortrigaBot:
         )
         if not isinstance(resp, RoomSendResponse):
             raise RuntimeError("room_send: " + repr(resp))
+        if ref:
+            self._remember_announce(ref, rid, resp.event_id)
+
+    async def _retract_announce(self, target, ref, reason):
+        """Eigene Ankündigung per Redaction entfernen. Rückgabe: True = erledigt."""
+        if not self.cfg.announce_room or target != self.cfg.announce_room:
+            raise _PlaintextRefused(target)
+        entry = self.state.get("announced", {}).get(ref)
+        if not entry:
+            return False  # (noch) nicht gesendet oder schon vergessen
+        resp = await self.client.room_redact(entry["room"], entry["event"], reason=reason or None)
+        if type(resp).__name__.endswith("Error"):
+            raise RuntimeError("room_redact: " + repr(resp))
+        self.state["announced"].pop(ref, None)
+        save_state(self.cfg.state_file, self.state)
+        return True
 
     async def _send_to_room(self, rid, body):
         if self._is_announce_room(rid):
@@ -360,6 +387,16 @@ class PortrigaBot:
             await self.client.keys_upload()
         if self.client.should_query_keys:
             await self.client.keys_query()
+        # Ankündigungen, deren Rückzug schon in der Outbox liegt, gar nicht erst senden
+        retracting = set()
+        for name in names:
+            try:
+                with open(os.path.join(self.cfg.outbox_dir, name), "r", encoding="utf-8") as f:
+                    r = json.load(f).get("retract")
+                if r:
+                    retracting.add(str(r))
+            except (OSError, ValueError, AttributeError):
+                pass
         for name in names:
             fpath = os.path.join(self.cfg.outbox_dir, name)
             try:
@@ -371,12 +408,41 @@ class PortrigaBot:
             mid = str(msg.get("id") or name)
             age = time.time() - (msg.get("createdAt", 0) / 1000)
             room, body = msg.get("roomId"), msg.get("body")
+            if msg.get("retract"):
+                ref = str(msg["retract"])
+                pending = os.path.join(self.cfg.outbox_dir, ref + ".json")
+                if os.path.exists(pending):
+                    # Ankündigung wurde noch gar nicht gesendet -> einfach verwerfen
+                    self._safe_remove(pending)
+                    self._outbox_attempts.pop(ref, None)
+                    self.log("Outbox: Ankündigung vor dem Senden zurückgezogen:", ref)
+                    await self._finish(fpath, mid, {})
+                    continue
+                try:
+                    done = await self._retract_announce(room, ref, msg.get("reason"))
+                    self.log("Outbox: Ankündigung entfernt" if done else
+                             "Outbox: keine gemerkte Ankündigung zum Entfernen", ref)
+                    await self._finish(fpath, mid, {})
+                except _PlaintextRefused:
+                    self.log("Outbox: Rückzug für fremden Raum verweigert:", room)
+                    await self._finish(fpath, mid, {})
+                except Exception as e:
+                    n = self._outbox_attempts.get(mid, 0) + 1
+                    self._outbox_attempts[mid] = n
+                    self.log("Outbox: Entfernen fehlgeschlagen (Versuch %d): %r" % (n, e))
+                    if n >= self.cfg.outbox_max_attempts or age > self.cfg.outbox_ttl:
+                        await self._finish(fpath, mid, {})
+                continue
             if age > self.cfg.outbox_ttl or not room or not body:
                 await self._finish(fpath, mid, msg)
                 continue
             try:
                 if msg.get("announce"):
-                    await self._send_announce(room, body)
+                    if mid in retracting:
+                        self.log("Outbox: Ankündigung vor dem Senden zurückgezogen:", mid)
+                        await self._finish(fpath, mid, {})
+                        continue
+                    await self._send_announce(room, body, ref=mid)
                     self.log("Outbox: Ankündigung gesendet an", room)
                     await self._finish(fpath, mid, {})
                     continue

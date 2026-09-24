@@ -68,7 +68,13 @@ function announceRoom(room, ws) {
   const ok = announcer.announce({ code: room.code, mode: room.mode, host: host ? host.name : '?',
     players: room.seats.length, maxPlayers: MAX_PLAYERS,
     creatorKey: ws.account ? 'acc:' + ws.account.id : 'ip:' + (ws.ip || '') });
-  if (ok) { room.announced = true; systemChat(room, 'Dieses Spiel wurde im Matrix-Raum angekündigt.'); }
+  if (ok) { room.announced = true; room.announceRef = ok; systemChat(room, 'Dieses Spiel wurde im Matrix-Raum angekündigt.'); }
+}
+// Ankündigung im Matrix-Raum wieder entfernen (Spielstart, Raum geschlossen, wieder privat).
+function retractAnnouncement(room, reason) {
+  if (!room.announceRef) return;
+  announcer.retract(room.announceRef, reason);
+  room.announceRef = null;
 }
 
 // ---- Benutzerkonten (Registrierung per Matrix-DM, siehe accounts.js) ----
@@ -279,6 +285,7 @@ function finishVote(room, reason) {
     }
     room.game = new Game(room.seats.map(s => ({ id: s.id, name: s.name, bot: s.bot })));
     room.game.start();
+    retractAnnouncement(room, 'Spiel gestartet');
     systemChat(room, `Das Spiel wurde gestartet${reason ? ` (${reason})` : ''}. Viel Erfolg!`);
   } else if (kind === 'next') {
     if (!room.game || room.game.phase !== 'roundEnd') { broadcast(room); return; }
@@ -600,6 +607,7 @@ function closeRoom(room, reason) {
   clearVote(room);
   clearKick(room);
   clearMuteVote(room);
+  retractAnnouncement(room, 'Raum geschlossen');
   rooms.delete(room.code);
   scheduleRoomList();
 }
@@ -638,6 +646,7 @@ wss.on('connection', (ws, req) => {
       clearVote(room);
       clearKick(room);
       clearMuteVote(room);
+      retractAnnouncement(room, 'Raum geschlossen');
       rooms.delete(room.code);
       for (const s of room.seats) clientRoom.delete(s.id);
       scheduleRoomList();
@@ -758,6 +767,7 @@ function handle(ws, m) {
       room.mode = mode;
       if (room.vote) clearVote(room);
       systemChat(room, `Spielmodus geändert: ${MODE_LABEL[mode]}.`);
+      if (mode === 'private') retractAnnouncement(room, 'Raum ist jetzt privat');
       announceRoom(room, ws);
       broadcast(room);
       return;
