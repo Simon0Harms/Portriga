@@ -639,6 +639,16 @@ function setAccount(u){
   $('name-label').classList.toggle('hidden', !!u);
   if (u){ $('acct-name').textContent = u.username; myName = u.username; }
   else { myName = localStorage.getItem('portriga_name') || ''; $('name').value = myName; }
+  setForcedRelink(!!(u && u.needsRelink));
+}
+// Konto ohne Passwort hat den Bot-Chat verlassen -> neuen Chat verknüpfen erzwingen
+function setForcedRelink(on){
+  const was = $('acct-modal').classList.contains('forced');
+  $('acct-modal').classList.toggle('forced', on);
+  $('acct-settings').classList.toggle('forced', on);
+  $('rl-forced').classList.toggle('hidden', !on);
+  if (on && !was) openAcct('settings');
+  else if (!on && was) closeAcct();
 }
 // Nach Login/Logout WebSocket neu aufbauen, damit der Server das Session-Cookie sieht.
 function reconnectWs(){ try { if (ws) ws.close(); } catch(_) {} }
@@ -661,14 +671,19 @@ function openAcct(view){
     if (!rlToken) showRlStep(1);
   }
 }
-function closeAcct(){ $('acct-modal').classList.add('hidden'); }
+function closeAcct(){ if (account && account.needsRelink) return; $('acct-modal').classList.add('hidden'); }
 $('acct-close').onclick = closeAcct;
 $('acct-modal').addEventListener('click', e => { if (e.target === $('acct-modal')) closeAcct(); });
 $('btn-show-login').onclick = () => openAcct('login');
 $('btn-show-register').onclick = () => openAcct('register');
 $('btn-to-register').onclick = () => openAcct('register');
 $('btn-acct-settings').onclick = () => openAcct('settings');
-$('btn-logout').onclick = async () => { try { await api('/logout', {}); } catch(_) {} setAccount(null); reconnectWs(); toast('Abgemeldet.'); };
+$('btn-logout').onclick = async () => { let j = {}; try { j = await api('/logout', {}); } catch(_) {} setAccount(null); reconnectWs(); toast(j.deleted ? 'Abgemeldet – dein Konto wurde gelöscht.' : 'Abgemeldet.'); };
+$('btn-rl-forced-logout').onclick = async () => {
+  if (!confirm('Ohne neuen Matrix-Chat wird dein Konto endgültig gelöscht. Fortfahren?')) return;
+  resetRl(); try { await api('/me/matrix/cancel', {}); } catch(_) {}
+  $('btn-logout').onclick();
+};
 
 // --- Anmelden ---
 $('btn-login').onclick = async () => {
@@ -871,3 +886,8 @@ $('btn-del-cancel').onclick = async () => {
   }
   try { const j = await api('/me'); setAccount(j.user); } catch(_) {}
 })();
+// Während der erzwungenen Neuverknüpfung auch „login“ aus einem neuen Chat erkennen
+setInterval(async () => {
+  if (!account || !account.needsRelink || rlToken) return;
+  try { const j = await api('/me'); if (!j.user || !j.user.needsRelink) { setAccount(j.user); if (j.user) toast('Neuer Matrix-Chat verknüpft.'); } } catch(_) {}
+}, 5000);

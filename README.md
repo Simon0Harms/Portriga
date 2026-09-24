@@ -120,6 +120,13 @@ Nachricht **von der verknüpften MXID** eingeht, wird das Konto endgültig gelö
 verabschiedet sich und **verlässt den DM-Raum** (`room_leave` + `room_forget`). Offene Sitzungen
 und Login-Links werden ungültig, der Benutzername ist wieder frei.
 
+**User verlässt den Chat mit dem Bot:** Der Sidecar meldet das Verlassen an die App und verlässt
+den dann leeren Raum ebenfalls. Konten **mit Passwort** verlieren nur die Chat-Verknüpfung
+(„login“ aus einem neuen Chat stellt sie wieder her). Konten **ohne Passwort**: Existiert noch ein
+gültiges Session-Cookie, erzwingt die App beim nächsten Aufruf das Verknüpfen eines neuen Chats
+(Code `MX-…` oder „login“ aus dem neuen Chat). Meldet sich der User vorher ab oder läuft das letzte
+Cookie ab, wird das Konto gelöscht. Gibt es kein gültiges Cookie mehr, wird es sofort gelöscht.
+
 **Architektur** (Spool-Prinzip wie im KKk58-Sidecar, die Node-App bleibt ohne Matrix-Abhängigkeit):
 ```
 Browser ──HTTP/WS──▶ server.js + accounts.js ──▶ data/matrix-outbox/ ──▶ portriga_matrix_bot.py ──▶ Matrix

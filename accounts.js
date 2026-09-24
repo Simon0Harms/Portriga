@@ -25,10 +25,22 @@
  *   neu verknüpft (gleiche MXID aus neuem Raum = nur Raumwechsel). Der alte Raum
  *   wird benachrichtigt; der Bot verlässt ihn, wenn kein Konto ihn mehr nutzt.
  *
+ * User verlässt den DM-Raum (Sidecar meldet {type:"leave"}):
+ *   - Konto MIT Passwort: nur die Raum-Verknüpfung wird entfernt.
+ *   - Konto OHNE Passwort und noch gültiges Session-Cookie: Konto wird als
+ *     ``needsRelink`` markiert; beim nächsten Aufruf erzwingt die App das
+ *     Verknüpfen eines neuen Raums (Code „MX-…“ oder „login“ aus neuem Chat).
+ *     Läuft das letzte Cookie ab oder meldet sich der User ab, ohne neu zu
+ *     verknüpfen, wird das Konto gelöscht.
+ *   - Konto OHNE Passwort und kein gültiges Cookie mehr: sofort gelöscht.
+ *   Da Sessions zustandslos (HMAC) sind, merkt sich das Konto das späteste
+ *   Ablaufdatum ausgestellter Cookies (``sessUntil``).
+ *
  * Kommunikation mit dem Sidecar ausschließlich über zwei Spool-Verzeichnisse
  * (je Auftrag eine Datei, atomar via tmp+rename) – wie in KKk58:
  *   outbox/  App -> Sidecar  {id, roomId, body, createdAt, leave?}
  *   inbox/   Sidecar -> App  {id, eventId, roomId, sender, body, ts}
+ *            bzw. {type:"leave", eventId, roomId, sender, ts} (User hat Raum verlassen)
  * ------------------------------------------------------------------------- */
 const fs = require('fs');
 const path = require('path');
@@ -138,8 +150,8 @@ function createAccounts(opts) {
   }
   const normCode = (a, b) => (a + b).toUpperCase();
 
-  function makeSession(u) {
-    const exp = Date.now() + o.sessionTtlMs;
+  function makeSession(u, exp) {
+    exp = exp || Date.now() + o.sessionTtlMs;
     const payload = `${u.id}.${u.sessVer || 0}.${exp}`;
     return payload + '.' + hmac('sess:' + payload);
   }
@@ -161,12 +173,15 @@ function createAccounts(opts) {
   function userFromReq(req) { return readSession(parseCookies(req.headers.cookie)[o.cookieName]); }
   function cookiePath() { return (o.basePath || '') + '/'; }
   function setSession(res, u) {
-    res.append('Set-Cookie', `${o.cookieName}=${encodeURIComponent(makeSession(u))}; Path=${cookiePath()}; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(o.sessionTtlMs / 1000)}${o.cookieSecure ? '; Secure' : ''}`);
+    const exp = Date.now() + o.sessionTtlMs;
+    // spätestes Cookie-Ablaufdatum merken (für „User hat Raum verlassen“)
+    if (!(u.sessUntil >= exp)) { u.sessUntil = exp; save(); }
+    res.append('Set-Cookie', `${o.cookieName}=${encodeURIComponent(makeSession(u, exp))}; Path=${cookiePath()}; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(o.sessionTtlMs / 1000)}${o.cookieSecure ? '; Secure' : ''}`);
   }
   function clearSession(res) {
     res.append('Set-Cookie', `${o.cookieName}=; Path=${cookiePath()}; HttpOnly; SameSite=Lax; Max-Age=0${o.cookieSecure ? '; Secure' : ''}`);
   }
-  function publicUser(u) { return u ? { id: u.id, username: u.username, mxid: u.mxid, hasPassword: !!u.hash, createdAt: u.createdAt } : null; }
+  function publicUser(u) { return u ? { id: u.id, username: u.username, mxid: u.mxid, hasPassword: !!u.hash, needsRelink: !!u.needsRelink, createdAt: u.createdAt } : null; }
 
   // ---- Outbox (App -> Sidecar) ----
   function enqueue(roomId, body, extra) {
@@ -236,7 +251,7 @@ function createAccounts(opts) {
     }
     const oldMxid = u.mxid || null, oldRoom = u.dmRoomId || null;
     const mxidChanged = lc(oldMxid) !== lc(sender);
-    u.mxid = sender; u.dmRoomId = roomId;
+    u.mxid = sender; u.dmRoomId = roomId; delete u.needsRelink;
     // Neue Identität -> offene Login-Links/Löschanfragen der alten MXID verwerfen
     if (mxidChanged) {
       db.magic = db.magic.filter(m => m.userId !== u.id);
@@ -253,12 +268,41 @@ function createAccounts(opts) {
     return 'relinked';
   }
 
+  // ---- User hat den DM-Raum verlassen ----
+  function hasLiveSession(u) {
+    // Konten von vor dieser Änderung kennen sessUntil nicht -> konservativ annehmen,
+    // dass noch ein Cookie bis max. sessionTtlMs existieren kann.
+    if (u.sessUntil === undefined) u.sessUntil = Date.now() + o.sessionTtlMs;
+    return u.sessUntil > Date.now();
+  }
+  function handleMemberLeave(sender, roomId) {
+    const u = userByMxid(sender);
+    if (!u || u.dmRoomId !== roomId) return 'ignored';
+    u.dmRoomId = null;
+    db.magic = db.magic.filter(m => m.userId !== u.id);
+    db.deletions = db.deletions.filter(d => d.userId !== u.id || d.done);
+    if (u.hash) { save(); o.log('Raum verlassen, Konto behält Passwort:', u.username); return 'unlinked'; }
+    if (hasLiveSession(u)) {
+      u.needsRelink = true; save();
+      o.log('Raum verlassen, Konto ohne Passwort wartet auf neue Verknüpfung:', u.username);
+      return 'needsrelink';
+    }
+    o.log('Raum verlassen, Konto ohne Passwort und ohne Sitzung:', u.username);
+    deleteUser(u);
+    return 'deleted';
+  }
+  // Konten, die neu verknüpft werden müssten, aber keine gültige Sitzung mehr haben
+  function purgeOrphans() {
+    for (const u of db.users.slice()) if (u.needsRelink && !u.hash && !hasLiveSession(u)) deleteUser(u);
+  }
+
   // ---- Inbox (Sidecar -> App) ----
   function handleInbound(msg) {
     const sender = String(msg.sender || '').trim();
     const roomId = String(msg.roomId || '').trim();
     const body = String(msg.body || '');
     if (!MXID_RE.test(sender) || !roomId || lc(sender) === lc(o.botMxid)) return 'ignored';
+    if (msg.type === 'leave') return handleMemberLeave(sender, roomId);
     const rl = body.match(RELINK_RE);
     if (rl) {
       if (rateHit('relink:' + lc(sender), 3000)) return 'rate';
@@ -310,7 +354,7 @@ function createAccounts(opts) {
     if (/^\s*!?(login|anmelden)\s*$/i.test(body)) {
       const u = userByMxid(sender);
       if (!u) { enqueue(roomId, '🃏 Portriga\nZu deiner Matrix-ID gibt es noch kein Konto. Registriere dich in der App.'); return 'nouser'; }
-      if (u.dmRoomId !== roomId) { u.dmRoomId = roomId; save(); }
+      if (u.dmRoomId !== roomId || u.needsRelink) { u.dmRoomId = roomId; delete u.needsRelink; save(); }
       if (!PUBLIC_BASE) { enqueue(roomId, '🃏 Portriga\nLogin-Link derzeit nicht möglich (öffentliche URL unbekannt). Bitte melde dich mit Passwort an.'); return 'nobase'; }
       if (rateHit('mlogin:' + u.id, 30000)) return 'rate';
       sendLoginLink(u, PUBLIC_BASE);
@@ -440,7 +484,13 @@ function createAccounts(opts) {
       res.json({ ok: true, user: publicUser(u) });
     });
 
-    r.post('/logout', (req, res) => { clearSession(res); res.json({ ok: true }); });
+    r.post('/logout', (req, res) => {
+      const u = userFromReq(req);
+      clearSession(res);
+      // Konto ohne Passwort und ohne Matrix-Raum: ohne Cookie nicht mehr erreichbar -> löschen
+      if (u && u.needsRelink && !u.hash) { u.sessUntil = 0; deleteUser(u); return res.json({ ok: true, deleted: true }); }
+      res.json({ ok: true });
+    });
 
     // Status einer Löschanfrage – ohne Login-Pflicht, da die Session nach der Löschung ungültig ist.
     r.get('/me/delete/status', (req, res) => {
@@ -459,7 +509,8 @@ function createAccounts(opts) {
       const np = String((req.body && req.body.newPassword) || '');
       if (np && np.length < 8) return res.status(422).json({ error: 'Passwort: mindestens 8 Zeichen.' });
       if (u.hash && !verifyPw(u, (req.body && req.body.currentPassword) || '')) return res.status(401).json({ error: 'Aktuelles Passwort falsch.' });
-      if (np) Object.assign(u, hashPw(np)); else { u.hash = null; u.salt = null; }
+      if (!np && u.needsRelink) return res.status(409).json({ error: 'Bitte zuerst einen neuen Matrix-Chat verknüpfen.' });
+    if (np) Object.assign(u, hashPw(np)); else { u.hash = null; u.salt = null; }
       save();
       res.json({ ok: true, user: publicUser(u) });
     });
@@ -513,7 +564,12 @@ function createAccounts(opts) {
     });
 
     // Alle Sitzungen beenden (inkl. dieser)
-    r.post('/me/logout-all', (req, res) => { req.user.sessVer = (req.user.sessVer || 0) + 1; save(); clearSession(res); res.json({ ok: true }); });
+    r.post('/me/logout-all', (req, res) => {
+      const u = req.user;
+      u.sessVer = (u.sessVer || 0) + 1; u.sessUntil = 0; save(); clearSession(res);
+      if (u.needsRelink && !u.hash) { deleteUser(u); return res.json({ ok: true, deleted: true }); }
+      res.json({ ok: true });
+    });
 
     if (BASE) app.use(BASE + '/api/account', r);
     app.use('/api/account', r);
@@ -522,8 +578,8 @@ function createAccounts(opts) {
   let timer = null;
   function start() {
     if (!enabled) { o.log('deaktiviert (accounts.botMxid nicht gesetzt).'); return; }
-    processInbox();
-    timer = setInterval(() => { processInbox(); if (prune()) save(); }, o.inboxPollMs);
+    processInbox(); purgeOrphans();
+    timer = setInterval(() => { processInbox(); purgeOrphans(); if (prune()) save(); }, o.inboxPollMs);
     timer.unref && timer.unref();
     o.log(`aktiv – Bot ${o.botMxid}, Daten in ${o.dataDir}`);
   }

@@ -217,6 +217,11 @@
 
       <div id="acct-settings" class="hidden">
         <h2>Konto</h2>
+        <div id="rl-forced" class="hidden">
+          <h2>Neuen Matrix-Chat verbinden</h2>
+          <p class="msg bad">Du hast den Chat mit dem Portriga-Bot verlassen. Da dein Konto kein Passwort hat, musst du einen neuen Chat mit dem Bot verknüpfen, um weiterzuspielen.</p>
+          <p class="hint">Meldest du dich ab, ohne neu zu verknüpfen, wird das Konto gelöscht. <button id="btn-rl-forced-logout" class="link">Abmelden &amp; Konto löschen</button></p>
+        </div>
         <p>Benutzername: <b id="set-name"></b><br />Matrix-ID: <b id="set-mxid"></b></p>
         <label id="set-cur-label">Aktuelles Passwort
           <input id="set-cur" type="password" autocomplete="current-password" />

@@ -174,6 +174,42 @@ function wsSession(withCookie) {
     assert.ok(rw.some(m => m.roomId === '!neu2:example.org' && /nutze ich ab jetzt diesen Chat/.test(m.body)));
     assert.ok(rw.some(m => m.roomId === '!neu:example.org' && m.leave === true));
 
+    // Konto ohne Passwort verlässt den Bot-Raum
+    const leave = (sender, roomId) => { const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+      fs.writeFileSync(path.join(INBOX, id + '.json'), JSON.stringify({ type: 'leave', eventId: '$' + id, roomId, sender, ts: Date.now() })); };
+    cookie = ''; await sleep(5100);
+    r = await req('/register/start', { username: 'Wanderer', password: '' }); const t5 = r.json.token;
+    dm('@wand:example.org', r.json.code, '!w1:example.org'); await sleep(2600); outbox();
+    r = await req('/register/status?token=' + t5); assert.strictEqual(r.json.status, 'done'); assert.strictEqual(r.json.user.needsRelink, false);
+    leave('@fremd:example.org', '!w1:example.org'); await sleep(2600);          // anderer User -> egal
+    r = await req('/me'); assert.strictEqual(r.json.user.needsRelink, false);
+    leave('@wand:example.org', '!w1:example.org'); await sleep(2600);           // Cookie gültig -> Neuverknüpfung erzwingen
+    r = await req('/me'); assert.strictEqual(r.json.user.needsRelink, true);
+    r = await req('/me/password', { newPassword: '' }); assert.strictEqual(r.status, 409);
+    r = await req('/me/matrix', {}); assert.strictEqual(r.status, 200);
+    dm('@wand:example.org', r.json.code, '!w2:example.org'); await sleep(2600); outbox();
+    r = await req('/me'); assert.strictEqual(r.json.user.needsRelink, false);
+    // erneut verlassen, dann per „login“ aus neuem Chat verbinden
+    leave('@wand:example.org', '!w2:example.org'); await sleep(2600);
+    r = await req('/me'); assert.strictEqual(r.json.user.needsRelink, true);
+    dm('@wand:example.org', 'login', '!w3:example.org'); await sleep(2600); outbox();
+    r = await req('/me'); assert.strictEqual(r.json.user.needsRelink, false);
+    // verlassen + abmelden (Cookie weg) -> Konto gelöscht
+    leave('@wand:example.org', '!w3:example.org'); await sleep(2600);
+    r = await req('/logout', {}); assert.strictEqual(r.json.deleted, true); cookie = '';
+    r = await req('/register/check?u=Wanderer'); assert.strictEqual(r.json.available, true);
+    // kein gültiges Cookie mehr (überall abgemeldet) -> Verlassen löscht sofort
+    await sleep(5100);
+    r = await req('/register/start', { username: 'Kurzgast', password: '' }); const t6 = r.json.token;
+    dm('@kurz:example.org', r.json.code, '!k1:example.org'); await sleep(2600); outbox();
+    r = await req('/register/status?token=' + t6); assert.strictEqual(r.json.status, 'done');
+    r = await req('/me/logout-all', {}); cookie = '';
+    leave('@kurz:example.org', '!k1:example.org'); await sleep(2600);
+    r = await req('/register/check?u=Kurzgast'); assert.strictEqual(r.json.available, true);
+    // Konto MIT Passwort: nur Raum-Verknüpfung entfernt
+    leave('@neu:example.org', '!neu2:example.org'); await sleep(2600);
+    r = await req('/login', { login: 'Umzug', password: 'geheim789' }); assert.strictEqual(r.json.user.needsRelink, false);
+
     // Fremder Origin blockiert
     const x = await fetch(URL0 + '/api/account/login', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' }, body: '{}' });
     assert.strictEqual(x.status, 403);

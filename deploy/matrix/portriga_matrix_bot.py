@@ -15,6 +15,9 @@ Login-Links. Abgeleitet vom KKk58-Sidecar (gleiches Spool-Prinzip).
   * Aufträge mit ``"leave": true`` (Konto gelöscht): nach dem Senden – bzw.
     wenn das Senden endgültig scheitert – verlässt der Bot den Raum und
     vergisst ihn (``room_leave`` + ``room_forget``).
+  * Verlässt ein User einen Raum (membership leave/ban), wird das als
+    ``{"type": "leave", ...}`` in die INBOX gemeldet; ist danach niemand außer
+    dem Bot mehr im Raum, verlässt der Bot ihn ebenfalls.
 
 Die Node-App bleibt dadurch ohne Matrix-/E2EE-Abhängigkeiten.
 
@@ -34,6 +37,7 @@ try:
     from nio import (
         AsyncClient, AsyncClientConfig, LoginResponse, RoomSendResponse,
         RoomMessageText, RoomMessageNotice, MegolmEvent, InviteMemberEvent,
+        RoomMemberEvent,
     )
 except ImportError:
     sys.stderr.write(
@@ -198,6 +202,38 @@ class PortrigaBot:
         except Exception as e:
             self.log("Beitritt fehlgeschlagen:", room.room_id, repr(e))
 
+    async def _on_member(self, room, event):
+        """User hat den Raum verlassen (oder wurde gebannt) -> an die Node-App melden."""
+        try:
+            who = getattr(event, "state_key", "") or ""
+            if not who or who == self.cfg.user_id:
+                return
+            if getattr(event, "membership", None) not in ("leave", "ban"):
+                return
+            if getattr(event, "prev_membership", None) not in (None, "join", "invite"):
+                return
+            eid = getattr(event, "event_id", None)
+            if not eid or eid in self._seen:
+                return
+            ts = int(getattr(event, "server_timestamp", 0) or 0)
+            if ts and (time.time() * 1000 - ts) > self.cfg.max_event_age * 1000:
+                return
+            write_spool(self.cfg.inbox_dir, {
+                "type": "leave",
+                "eventId": eid,
+                "roomId": room.room_id,
+                "sender": who,
+                "ts": ts,
+            })
+            self._remember(eid)
+            self.log("Inbox:", who, "hat", room.room_id, "verlassen")
+            others = [u for u in list(getattr(room, "users", {}).keys())
+                      if u not in (self.cfg.user_id, who)]
+            if not others:
+                await self._leave_room(room.room_id)
+        except Exception as e:
+            self.log("Member-Fehler (ignoriert):", repr(e))
+
     def _remember(self, eid):
         self._seen.add(eid)
         if len(self._seen) > 2000:
@@ -238,7 +274,7 @@ class PortrigaBot:
                 await self.client.room_forget(rid)
             except Exception as e:  # Vergessen ist optional
                 self.log("room_forget fehlgeschlagen (ignoriert):", rid, repr(e))
-            self.log("Raum verlassen (Konto gelöscht):", rid)
+            self.log("Raum verlassen:", rid)
         except Exception as e:
             self.log("Raum verlassen fehlgeschlagen:", rid, repr(e))
 
@@ -331,6 +367,7 @@ class PortrigaBot:
         self.client.add_event_callback(self._on_message, (RoomMessageText, RoomMessageNotice))
         self.client.add_event_callback(self._on_undecryptable, (MegolmEvent,))
         self.client.add_event_callback(self._on_invite, (InviteMemberEvent,))
+        self.client.add_event_callback(self._on_member, (RoomMemberEvent,))
 
         await self.client.sync(timeout=30000, full_state=True)
         if self.client.should_upload_keys:

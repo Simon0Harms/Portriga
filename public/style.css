@@ -280,3 +280,5 @@ a.btn-link.hdr-btn{padding:.3em .7em;font-size:.9rem}
 .danger-zone h3{margin:0 0 .4em;font-size:1rem;color:#ff9aa8}
 button.danger{background:#8a2333;color:#fff;border-color:#b83a4d;font-weight:700}
 button.danger:hover{filter:brightness(1.1)}
+#acct-settings.forced > :not(.relink-zone):not(#rl-forced){display:none}
+#acct-modal.forced .modal-x{display:none}
