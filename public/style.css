@@ -45,6 +45,12 @@ button.link{background:none;border:none;color:var(--accent);padding:.3em;text-de
 .seats li{display:flex;align-items:center;gap:8px;padding:.5em .6em;border-radius:9px;background:rgba(255,255,255,.05);margin:.3em 0}
 .seats .tag{margin-left:auto;font-size:.72rem;color:var(--gold)}
 .seats .bot{color:var(--dim)}
+.seats .tag.admin{color:var(--danger)}
+.seats .tag+.tag{margin-left:.4em}
+.seats .kick-btn{font-size:.72rem;padding:.2em .6em;margin-left:.4em}
+.seats .tag~.kick-btn{margin-left:.4em}
+.seats li>.kick-btn:not(.tag~.kick-btn){margin-left:auto}
+.vote.kick .vt-bar>div{background:var(--danger)}
 .dot{width:9px;height:9px;border-radius:50%;background:#4c6}
 .dot.off{background:#a44}
 

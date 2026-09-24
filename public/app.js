@@ -72,6 +72,7 @@ function onMessage(m){
       if (m.lobby) renderLobby(m); else { lastState = m; renderGame(m); }
       renderVote(m.lobby ? 'lobby-vote' : 'ov-vote', m.vote || null);
       if (m.lobby) $('btn-start').disabled = !!m.vote;
+      renderKick(m.lobby ? (m.kick || null) : null);
       break;
     case 'rtcConfig': if (m.iceServers) rtcConfig = { iceServers: m.iceServers }; break;
     case 'voice': onVoiceMembers(m.members || []); break;
@@ -81,6 +82,7 @@ function onMessage(m){
     case 'toast': toast(m.message); break;
     case 'error': toast('⚠ ' + m.message); break;
     case 'roomClosed': toast(m.reason || 'Raum geschlossen'); exitRoomUI(); leaveChatUI(); show('home'); break;
+    case 'kicked': toast('⚠ ' + (m.reason || 'Du wurdest aus dem Raum entfernt.')); exitRoomUI(); leaveChatUI(); show('home'); break;
     case 'left': exitRoomUI(); leaveChatUI(); show('home'); break;
   }
 }
@@ -168,6 +170,7 @@ function renderLobby(m){
   $('btn-addbot').classList.toggle('hidden', mode === 'ranked');
   $('btn-rmbot').classList.toggle('hidden', mode === 'ranked');
   const ul = $('seat-list'); ul.innerHTML = '';
+  const iAmAdmin = !!(m.seats.find(x => x.id===clientId) || {}).admin;
   m.seats.forEach(s => {
     const li = document.createElement('li');
     const dot = document.createElement('span'); dot.className = 'dot' + (s.connected?'':' off');
@@ -176,6 +179,17 @@ function renderLobby(m){
     if (s.verified){ const v=document.createElement('span'); v.className='verified'; v.title='registriertes Konto (Matrix-verifiziert)'; v.textContent='✓'; li.appendChild(v); }
     if (s.bot) { const b=document.createElement('span'); b.className='tag bot'; b.textContent='Bot'; li.appendChild(b); }
     if (s.id===m.hostId){ const h=document.createElement('span'); h.className='tag'; h.textContent='Host'; li.appendChild(h); }
+    if (s.admin){ const a=document.createElement('span'); a.className='tag admin'; a.textContent='Admin'; li.appendChild(a); }
+    if (!s.bot && s.id!==clientId && (iAmAdmin || (!m.kick && !s.admin))){
+      const k=document.createElement('button'); k.className='kick-btn';
+      k.textContent = iAmAdmin ? 'Kicken' : 'Votekick';
+      k.title = iAmAdmin ? 'Sofort aus dem Raum entfernen (Admin)' : 'Abstimmung zum Kicken starten (mehr als 50 % Ja nötig)';
+      k.onclick = () => {
+        if (iAmAdmin && !confirm(`${s.name} wirklich aus dem Raum entfernen?`)) return;
+        send({ type:'kick', targetId: s.id });
+      };
+      li.appendChild(k);
+    }
     ul.appendChild(li);
   });
   $('lobby-hint').textContent = isHost
@@ -365,6 +379,40 @@ function renderVote(boxId, v){
   tickVote();
   if (!voteTimer) voteTimer = setInterval(tickVote, 250);
 }
+// ---------- Votekick (Lobby) ----------
+let kickState = null, kickTimer = null;
+function renderKick(k){
+  const box = $('lobby-kick');
+  kickState = k ? { ...k, localDeadline: Date.now() + k.remainingMs } : null;
+  if (!k){ box.classList.add('hidden'); box.innerHTML=''; if (kickTimer){ clearInterval(kickTimer); kickTimer=null; } return; }
+  box.classList.remove('hidden');
+  const isTarget = k.targetId === clientId;
+  const mine = (k.voters.find(x => x.id===clientId) || {}).vote;
+  const yes = k.voters.filter(x => x.vote==='yes').length;
+  const list = k.voters.map(x => {
+    const cls = x.vote || 'open', sym = x.vote==='yes' ? '✓' : x.vote==='no' ? '✗' : '…';
+    return `<li class="${cls}">${sym} ${escapeHtml(x.name)}${x.id===clientId?' (du)':''}</li>`;
+  }).join('');
+  box.innerHTML = `<div class="vt-head"><span>🚫 ${escapeHtml(k.targetName)} kicken?</span><span class="vt-time"></span></div>
+    <div class="vt-bar"><div></div></div>
+    <ul>${list}</ul>
+    <div class="hint">${yes} von ${k.needed} nötigen Ja-Stimmen (mehr als 50 %).</div>
+    ${isTarget ? '<div class="hint">Über dich wird abgestimmt – du bist nicht stimmberechtigt.</div>' : `<div class="vt-btns">
+      <button data-k="yes" class="primary${mine==='yes'?' sel':''}">Ja</button>
+      <button data-k="no" class="${mine==='no'?'sel':''}">Nein</button>
+    </div>`}`;
+  box.querySelectorAll('button[data-k]').forEach(b => b.onclick = () => send({ type:'kickVote', choice: b.dataset.k }));
+  tickKick();
+  if (!kickTimer) kickTimer = setInterval(tickKick, 250);
+}
+function tickKick(){
+  const box = $('lobby-kick');
+  if (!kickState) return;
+  const ms = Math.max(0, kickState.localDeadline - Date.now());
+  const t = box.querySelector('.vt-time'), bar = box.querySelector('.vt-bar>div');
+  if (t) t.textContent = Math.ceil(ms/1000) + ' s';
+  if (bar) bar.style.width = (100 * ms / kickState.totalMs) + '%';
+}
 function stopVoteTimer(){ if (voteTimer){ clearInterval(voteTimer); voteTimer=null; } }
 function tickVote(){
   if (!voteState || !voteBox) return stopVoteTimer();
@@ -451,7 +499,7 @@ let voiceRoster = [];                 // aktuelle Voice-Mitglieder laut Server
 const peers = new Map();              // id -> {pc, polite, makingOffer, ignoreOffer, name, speaking}
 
 function enterRoomUI(){ setFab(true); $('voice').classList.remove('hidden'); }
-function exitRoomUI(){ renderVote('lobby-vote', null); setFab(false); $('voice').classList.add('hidden'); voiceLeave(true); }
+function exitRoomUI(){ renderVote('lobby-vote', null); renderKick(null); setFab(false); $('voice').classList.add('hidden'); voiceLeave(true); }
 
 async function voiceJoin(){
   if (voiceJoined) return;

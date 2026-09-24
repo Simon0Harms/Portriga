@@ -9,64 +9,10 @@ const { Game, setRanks, MAX_PLAYERS_LIMIT } = require('./game');
 const { botBid, botCardId } = require('./bots');
 const { createAccounts } = require('./accounts');
 const { createRanking } = require('./ranking');
+const { createAdmins } = require('./admins');
 
-// ---- Zentrale Konfiguration ----
-// Priorität: eingebaute Defaults < config.json (in /opt/portriga) < Umgebungsvariablen.
-function deepMerge(base, over) {
-  const out = Array.isArray(base) ? base.slice() : { ...base };
-  for (const k of Object.keys(over || {})) {
-    if (over[k] && typeof over[k] === 'object' && !Array.isArray(over[k]) &&
-        base[k] && typeof base[k] === 'object' && !Array.isArray(base[k])) {
-      out[k] = deepMerge(base[k], over[k]);
-    } else if (over[k] !== undefined) {
-      out[k] = over[k];
-    }
-  }
-  return out;
-}
-function loadConfig() {
-  const defaults = {
-    port: 3000,
-    basePath: '',                 // Subdirectory, z.B. "/portriga"; leer = Root
-    ice: { stun: 'stun:stun.l.google.com:19302', turn: null }, // turn: {url,user,pass}
-    chat: { historyMax: 60, textMax: 300 },
-    bots: { moveDelayMs: 700 },
-    game: {
-      ranks: null,     // null = eingebaute Standard-Wertigkeit (siehe game.js)
-      maxPlayers: 63,  // 2–63; > 7 = alternative Variante mit reduzierter Kartenanzahl
-    },
-    accounts: {
-      botMxid: '',          // Matrix-Bot, dem neue User ihren Code schreiben; leer = Konten aus
-      publicUrl: '',        // öffentliche Basis-URL (inkl. basePath) – Pflicht für Login-Links
-      dataDir: '',          // leer = <App>/data
-      codeTtlMin: 15,       // Gültigkeit des Registrierungscodes
-      sessionDays: 30,      // Laufzeit der Anmeldung (Cookie)
-      cookieSecure: true,   // false nur für lokalen Test ohne HTTPS
-    },
-  };
-  let file = {};
-  const cfgPath = path.join(__dirname, 'config.json');
-  try {
-    file = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-    console.log(`Konfiguration geladen: ${cfgPath}`);
-  } catch (e) {
-    if (e.code !== 'ENOENT') console.warn(`config.json ignoriert (${e.message}) – nutze Defaults.`);
-  }
-  const cfg = deepMerge(defaults, file);
-  // ENV-Overrides (höchste Priorität; gut für Secrets)
-  if (process.env.PORT) cfg.port = Number(process.env.PORT);
-  if (process.env.BASE_PATH !== undefined) cfg.basePath = process.env.BASE_PATH;
-  if (process.env.STUN_URL) cfg.ice.stun = process.env.STUN_URL;
-  const A = cfg.accounts;
-  if (process.env.MATRIX_BOT_MXID !== undefined) A.botMxid = process.env.MATRIX_BOT_MXID;
-  if (process.env.PORTRIGA_PUBLIC_URL !== undefined) A.publicUrl = process.env.PORTRIGA_PUBLIC_URL;
-  if (process.env.PORTRIGA_DATA_DIR) A.dataDir = process.env.PORTRIGA_DATA_DIR;
-  if (process.env.COOKIE_SECURE !== undefined) A.cookieSecure = process.env.COOKIE_SECURE !== 'false' && process.env.COOKIE_SECURE !== '0';
-  if (process.env.TURN_URL) {
-    cfg.ice.turn = { url: process.env.TURN_URL, user: process.env.TURN_USER || '', pass: process.env.TURN_PASS || '' };
-  }
-  return cfg;
-}
+// ---- Zentrale Konfiguration (config.js) ----
+const { loadConfig, dataDirOf } = require('./config');
 const CONFIG = loadConfig();
 if (CONFIG.game && CONFIG.game.ranks) {
   try { setRanks(CONFIG.game.ranks); } catch (e) { console.warn('game.ranks ignoriert:', e.message); }
@@ -104,7 +50,7 @@ const sendIndex = (_req, res) => res.type('html').send(INDEX_HTML);
 // ---- Benutzerkonten (Registrierung per Matrix-DM, siehe accounts.js) ----
 const AC = CONFIG.accounts || {};
 const accounts = createAccounts({
-  dataDir: AC.dataDir || path.join(__dirname, 'data'),
+  dataDir: dataDirOf(CONFIG),
   botMxid: String(AC.botMxid || '').trim(),
   publicUrl: String(AC.publicUrl || '').trim(),
   codeTtlMs: Math.max(1, Number(AC.codeTtlMin) || 15) * 60 * 1000,
@@ -132,7 +78,9 @@ accounts.start();
 // ranked: in der Raumliste, nur angemeldete Konten, keine Bots, Ergebnis zählt für die Rangliste
 const MODES = ['private', 'public', 'ranked'];
 const MODE_LABEL = { private: 'Privat', public: 'Öffentlich', ranked: 'Rangliste' };
-const ranking = createRanking({ dataDir: AC.dataDir || path.join(__dirname, 'data') });
+const ranking = createRanking({ dataDir: dataDirOf(CONFIG) });
+// Admin-Rolle: wird per Terminal vergeben (node admin-cli.js), siehe admins.js.
+const admins = createAdmins({ dataDir: dataDirOf(CONFIG) });
 const rankingHandler = (_req, res) => res.set('Cache-Control', 'no-store').json({ enabled: accounts.enabled, players: ranking.top(50) });
 if (BASE) app.get(BASE + '/api/ranking', rankingHandler);
 app.get('/api/ranking', rankingHandler);
@@ -324,6 +272,91 @@ function syncVote(room) {
   }
 }
 
+/* ---- Votekick (nur in der Lobby) ----
+ * room.kick = { targetId, initiatorId, votes:{clientId:'yes'|'no'}, deadline, timer }
+ * - Stimmberechtigt: alle verbundenen menschlichen Spieler außer dem Betroffenen.
+ * - Gekickt wird, sobald MEHR als 50 % der Stimmberechtigten mit Ja gestimmt haben.
+ * - Ist keine Mehrheit mehr erreichbar oder läuft die Zeit ab -> abgelehnt.
+ * - Ein Admin (Rolle per Terminal vergeben, siehe admin-cli.js) kickt sofort ohne Abstimmung;
+ *   Admins selbst können nicht per Abstimmung gekickt werden.
+ * - Gekickte Spieler können dem Raum nicht erneut beitreten.
+ */
+const KICK_MS = 60000;
+function kickVoters(room) {
+  const k = room.kick;
+  return k ? voters(room).filter(s => s.id !== k.targetId) : [];
+}
+function kickView(room) {
+  const k = room.kick;
+  if (!k) return null;
+  const target = seatOf(room, k.targetId);
+  const vs = kickVoters(room);
+  return {
+    targetId: k.targetId, targetName: target ? target.name : '?',
+    remainingMs: Math.max(0, k.deadline - Date.now()), totalMs: KICK_MS,
+    needed: Math.floor(vs.length / 2) + 1,
+    voters: vs.map(s => ({ id: s.id, name: s.name, vote: k.votes[s.id] || null })),
+  };
+}
+function clearKick(room) {
+  if (room.kick && room.kick.timer) clearTimeout(room.kick.timer);
+  room.kick = null;
+}
+function openKick(room, targetId, initiatorId) {
+  clearKick(room);
+  const k = { targetId, initiatorId, votes: { [initiatorId]: 'yes' }, deadline: Date.now() + KICK_MS, timer: null };
+  k.timer = setTimeout(() => {
+    if (room.kick !== k || rooms.get(room.code) !== room) return;
+    const target = seatOf(room, k.targetId);
+    clearKick(room);
+    systemChat(room, `Abstimmung zum Kicken von ${target ? target.name : '?'} abgelaufen – keine Mehrheit.`);
+    broadcast(room);
+  }, KICK_MS);
+  room.kick = k;
+}
+/* 'kick' = Mehrheit erreicht, 'fail' = Mehrheit nicht mehr möglich, 'gone' = hinfällig, null = offen */
+function kickOutcome(room) {
+  const k = room.kick;
+  if (!k) return null;
+  if (room.game || !seatOf(room, k.targetId)) return 'gone';
+  const vs = kickVoters(room);
+  const yes = vs.filter(s => k.votes[s.id] === 'yes').length;
+  const no = vs.filter(s => k.votes[s.id] === 'no').length;
+  if (vs.length > 0 && yes * 2 > vs.length) return 'kick';
+  if ((vs.length - no) * 2 <= vs.length) return 'fail';
+  return null;
+}
+function resolveKick(room) {
+  const outcome = kickOutcome(room);
+  if (!outcome) return false;
+  const k = room.kick;
+  const target = seatOf(room, k.targetId);
+  clearKick(room);
+  if (outcome === 'kick') kickPlayer(room, k.targetId, 'per Abstimmung');
+  else {
+    if (outcome === 'fail' && target) systemChat(room, `${target.name} wird nicht gekickt – keine Mehrheit.`);
+    broadcast(room);
+  }
+  return true;
+}
+function kickPlayer(room, targetId, how) {
+  const seat = seatOf(room, targetId);
+  if (!seat || seat.bot) return;
+  if (!room.banned) room.banned = { ids: new Set(), accounts: new Set() };
+  room.banned.ids.add(targetId);
+  if (seat.accountId) room.banned.accounts.add(seat.accountId);
+  systemChat(room, `${seat.name} wurde ${how} aus dem Raum entfernt.`);
+  const ws = sockets.get(targetId);
+  leaveCurrent(targetId);   // entfernt den Sitz, übergibt ggf. den Host, broadcastet
+  send(ws, { type: 'kicked', reason: `Du wurdest ${how} aus dem Raum ${room.code} entfernt.` });
+  send(ws, { type: 'roomList', rooms: roomListView() });
+}
+function isAdminSeat(seat) { return !!seat && !seat.bot && admins.isAdmin(seat.accountId); }
+function isBanned(room, ws) {
+  const b = room.banned;
+  return !!b && (b.ids.has(ws.clientId) || (ws.account && b.accounts.has(ws.account.id)));
+}
+
 function lobbyView(room) {
   return {
     type: 'state',
@@ -331,14 +364,17 @@ function lobbyView(room) {
     code: room.code,
     mode: room.mode,
     hostId: room.hostId,
-    seats: room.seats.map(s => ({ id: s.id, name: s.name, bot: s.bot, connected: s.connected, verified: !!s.accountId })),
+    seats: room.seats.map(s => ({ id: s.id, name: s.name, bot: s.bot, connected: s.connected, verified: !!s.accountId, admin: isAdminSeat(s) })),
     maxPlayers: MAX_PLAYERS,
     vote: voteView(room),
+    kick: kickView(room),
   };
 }
 
 function broadcast(room) {
   syncVote(room);
+  // Sitz-/Verbindungsänderung kann eine laufende Kick-Abstimmung entscheiden -> nachgelagert auflösen.
+  if (kickOutcome(room)) setImmediate(() => { if (rooms.get(room.code) === room) resolveKick(room); });
   recordRanked(room);
   scheduleRoomList();
   if (!room.game) {
@@ -438,6 +474,7 @@ function closeRoom(room, reason) {
     }
   }
   clearVote(room);
+  clearKick(room);
   rooms.delete(room.code);
   scheduleRoomList();
 }
@@ -473,6 +510,7 @@ wss.on('connection', (ws, req) => {
     if (humans.every(s => !s.connected)) {
       // niemand mehr da: Raum verwerfen
       clearVote(room);
+      clearKick(room);
       rooms.delete(room.code);
       for (const s of room.seats) clientRoom.delete(s.id);
       scheduleRoomList();
@@ -537,6 +575,7 @@ function handle(ws, m) {
       const room = rooms.get(String(m.code || '').toUpperCase());
       if (!room) return err(ws, 'Raum nicht gefunden.');
       if (room.game) return err(ws, 'Spiel läuft bereits – kein Beitritt möglich.');
+      if (isBanned(room, ws)) return err(ws, 'Du wurdest aus diesem Raum gekickt.');
       let seat = seatOf(room, ws.clientId);
       if (!seat && room.seats.length >= MAX_PLAYERS) return err(ws, `Raum ist voll (max. ${MAX_PLAYERS}).`);
       if (!seat && room.mode === 'ranked' && !ws.account) return err(ws, 'Ranglisten-Raum: Beitritt nur mit angemeldetem Konto.');
@@ -619,6 +658,41 @@ function handle(ws, m) {
       room.vote.votes[seat.id] = choice;
       if (choice === 'no' && prev !== 'no') systemChat(room, `${seat.name} hat mit Nein gestimmt – Zeit angehalten.`);
       if (evaluateVote(room)) return;
+      broadcast(room);
+      return;
+    }
+
+    case 'kick': {
+      const { room, seat } = memberRoom(ws);
+      if (room.game) throw new Error('Kicken ist nur in der Lobby möglich.');
+      const targetId = String(m.targetId || '');
+      const target = seatOf(room, targetId);
+      if (!target) throw new Error('Spieler nicht gefunden.');
+      if (target.bot) throw new Error('Bots bitte über „Bot entfernen“ entfernen.');
+      if (targetId === seat.id) throw new Error('Du kannst dich nicht selbst kicken.');
+      // Admin: sofort, ohne Zustimmung anderer (Rolle wird per Terminal vergeben).
+      if (ws.account && admins.isAdmin(ws.account.id) && seat.accountId === ws.account.id) {
+        if (room.kick && room.kick.targetId === targetId) clearKick(room);
+        if (room.vote) { clearVote(room); systemChat(room, 'Abstimmung abgebrochen (Sitzordnung geändert).'); }
+        kickPlayer(room, targetId, 'von einem Admin');
+        return;
+      }
+      if (isAdminSeat(target)) throw new Error('Admins können nicht per Abstimmung gekickt werden.');
+      if (room.kick) throw new Error('Es läuft bereits eine Kick-Abstimmung.');
+      openKick(room, targetId, seat.id);
+      systemChat(room, `${seat.name} möchte ${target.name} kicken – Abstimmung (${KICK_MS / 1000} s, mehr als 50 % Ja nötig).`);
+      if (resolveKick(room)) return;
+      broadcast(room);
+      return;
+    }
+
+    case 'kickVote': {
+      const { room, seat } = memberRoom(ws);
+      const k = room.kick;
+      if (!k) throw new Error('Keine Kick-Abstimmung aktiv.');
+      if (seat.id === k.targetId) throw new Error('Du bist von dieser Abstimmung betroffen und nicht stimmberechtigt.');
+      k.votes[seat.id] = m.choice === 'no' ? 'no' : 'yes';
+      if (resolveKick(room)) return;
       broadcast(room);
       return;
     }

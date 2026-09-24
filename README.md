@@ -43,11 +43,28 @@ bots.js            simpler Platzhalter-Bot
 server.js          Express + WebSocket, Räume, Bot-Steuerung, Reconnect
 accounts.js        Benutzerkonten: Registrierung per Matrix-DM, Login, Sessions
 ranking.js         Rangliste für Ranglisten-Räume (data/ranking.json)
+admins.js          Admin-Rolle (data/admins.json), admin-cli.js = Verwaltung per Terminal
+config.js          Laden der Konfiguration (config.json + ENV)
 public/            Frontend (index.html, style.css, app.js) + regeln.html (eigenständige Regelseite)
 test/simulate.js   kopflose Vollspiel-Simulation (npm test)
 deploy/            Proxmox-LXC + systemd + nginx + coturn/ENV (Voice)
 deploy/matrix/     Matrix-Bot (Sidecar) für Registrierung und Login-Links
 ```
+
+## Spieler kicken & Admin-Rolle
+In der Lobby kann jeder einen Mitspieler per **Votekick** zur Abstimmung stellen. Stimmberechtigt sind alle
+verbundenen Menschen außer dem Betroffenen; gekickt wird bei **mehr als 50 % Ja** (60 s Zeit). Gekickte
+können dem Raum nicht erneut beitreten.
+
+**Admins** kicken sofort ohne Abstimmung und können selbst nicht per Votekick entfernt werden. Die Rolle
+hängt an einem (registrierten) Konto und wird nur per Terminal vergeben:
+```bash
+cd /opt/portriga
+sudo -u portriga node admin-cli.js add <benutzername>     # Rolle vergeben
+sudo -u portriga node admin-cli.js remove <benutzername>  # Rolle entziehen
+sudo -u portriga node admin-cli.js list                   # Admins anzeigen
+```
+Gespeichert in `data/admins.json` (Konto-ID); der laufende Server übernimmt Änderungen ohne Neustart.
 
 ## Lokal starten
 ```bash
