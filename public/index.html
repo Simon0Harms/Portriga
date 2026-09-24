@@ -21,6 +21,7 @@
   <!-- Startbildschirm -->
   <section id="screen-home" class="screen">
     <div class="panel">
+      <button type="button" class="link lang-toggle lang-home">🌐 English</button>
       <h1>Portriga</h1>
       <p class="sub">Stichvorhersage-Kartenspiel · 2–7 Spieler (mehr mit alternativer Variante)</p>
       <!-- Konto (nur sichtbar, wenn der Server Konten aktiviert hat) -->
@@ -76,6 +77,7 @@
   <!-- Lobby -->
   <section id="screen-lobby" class="screen hidden">
     <div class="panel">
+      <button type="button" class="link lang-toggle lang-home">🌐 English</button>
       <h2>Lobby</h2>
       <p>Raumcode: <span id="lobby-code" class="code-badge"></span>
         <button id="btn-copy" class="link">kopieren</button>
@@ -114,6 +116,7 @@
       <div class="hdr-item">Trumpf: <span id="trump" class="trump"></span></div>
       <div class="hdr-item">Stiche: <b id="tricks-progress"></b></div>
       <a id="btn-rules" class="btn-link hdr-btn" href="regeln.html" target="portriga-regeln" rel="noopener" title="Spielregeln (neues Fenster)" aria-label="Spielregeln">📖 Regeln</a>
+      <button type="button" class="hdr-btn lang-toggle">🌐 English</button>
       <button id="btn-fullscreen" class="hdr-btn hidden" title="Vollbild" aria-label="Vollbild umschalten">⛶</button>
     </header>
 
@@ -328,6 +331,7 @@
 
   <div id="toast" class="toast hidden"></div>
 </div>
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

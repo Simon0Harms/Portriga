@@ -312,3 +312,8 @@ select{width:100%;margin-top:.3em;padding:.55em .6em;border-radius:9px;border:1p
 .ranking th,.ranking td{padding:.3em .4em;text-align:left;border-bottom:1px solid rgba(255,255,255,.08)}
 .ranking td:nth-child(n+3),.ranking th:nth-child(n+3){text-align:right}
 select option{background:#0b3d26;color:#fff}
+
+/* Sprachumschaltung DE/EN (Issue #11) */
+.panel{position:relative}
+.lang-toggle.lang-home{position:absolute;top:10px;right:12px;font-size:.85rem;white-space:nowrap}
+#game-header .lang-toggle{font-size:.85rem;white-space:nowrap}
