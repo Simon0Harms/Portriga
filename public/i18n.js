@@ -321,6 +321,8 @@
     [/^(.+) ist beigetreten\.$/, (m) => `${m[1]} joined.`],
     [/^Spielmodus geändert: (.+)\.$/, (m) => `Game mode changed: ${MODE[m[1]] || m[1]}.`],
     [/^Abstimmung zum Spielstart – (\d+) s Zeit\.$/, (m) => `Vote to start the game – ${m[1]} s.`],
+    [/^Offline: (.+)\. Die Zeit läuft ab – wer dann noch offline ist, wird entfernt\.$/, (m) => `Offline: ${m[1]}. The timer runs out – anyone still offline then will be removed.`],
+    [/^(.+) war bei Ablauf der Startabstimmung offline und wurde aus dem Raum entfernt\.$/, (m) => `${m[1]} was offline when the start vote ended and was removed from the room.`],
     [/^(.+) hat mit Nein gestimmt – Zeit angehalten\.$/, (m) => `${m[1]} voted no – timer paused.`],
     [/^(.+) möchte (.+) kicken – Abstimmung \((\d+) s, mehr als 50 % Ja nötig\)\.$/, (m) => `${m[1]} wants to kick ${m[2]} – vote (${m[3]} s, more than 50 % yes needed).`],
     [/^(.+) möchte (.+) (stummschalten|wieder freischalten) – Abstimmung \((\d+) s, mehr als 50 % Ja nötig\)\.$/,

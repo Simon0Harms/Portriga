@@ -453,6 +453,8 @@ function renderVote(boxId, v){
     <div class="vt-bar"><div></div></div>
     <ul>${list}</ul>
     <div class="hint">${v.paused ? 'Zeit angehalten – wartet, bis alle Nein-Stimmen auf Ja wechseln.'
+      : (v.offline && v.offline.length)
+      ? 'Offline: ' + v.offline.map(escapeHtml).join(', ') + '. ' + 'Die Zeit läuft ab – wer dann noch offline ist, wird entfernt.'
       : 'Ohne Nein-Stimme startet es nach Ablauf der Zeit automatisch.'}</div>
     <div class="vt-btns">
       <button data-v="yes" class="primary${mine==='yes'?' sel':''}">Ja</button>

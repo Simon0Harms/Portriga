@@ -224,15 +224,28 @@ function leaveVoice(room, clientId) {
  * - Stimmen alle mit Ja -> sofort Start.
  * - Stimmt jemand mit Nein -> Zeit wird angehalten, bis alle Nein-Stimmen zu Ja wechseln.
  * - Läuft die Zeit ab (nur möglich ohne Nein-Stimme) -> Start; Nichtwähler gelten als Zustimmung.
+ * - Spielstart mit getrennten (offline) Spielern in der Lobby: kein Sofortstart, auch wenn alle
+ *   Verbundenen mit Ja stimmen – der Timer läuft regulär ab (Nein-Stimmen halten ihn wie gewohnt an).
+ *   Wer bei Ablauf noch offline ist, wird aus dem Raum entfernt (ohne Sperre, erneuter Beitritt
+ *   möglich); danach startet das Spiel.
+ * - Geht ein Spieler offline, verfällt seine Stimme (gilt als nicht abgestimmt). War es die
+ *   letzte Nein-Stimme, läuft der Timer weiter.
  */
 const VOTE_MS = 60000;
 function voters(room) { return room.seats.filter(s => !s.bot && s.connected); }
+function offlineHumans(room) { return room.seats.filter(s => !s.bot && !s.connected); }
+/* Startabstimmung in der Lobby, während mindestens ein Spieler offline ist. */
+function waitingForOffline(room) {
+  const v = room.vote;
+  return !!v && v.kind === 'start' && !room.game && offlineHumans(room).length > 0;
+}
 function voteView(room) {
   const v = room.vote;
   if (!v) return null;
   const remainingMs = v.paused ? v.remainingMs : Math.max(0, v.deadline - Date.now());
   return {
     kind: v.kind, paused: v.paused, remainingMs, totalMs: VOTE_MS,
+    offline: waitingForOffline(room) ? offlineHumans(room).map(s => s.name) : [],
     voters: voters(room).map(s => ({ id: s.id, name: s.name, vote: v.votes[s.id] || null })),
   };
 }
@@ -245,6 +258,7 @@ function armVoteTimer(room) {
   if (v.timer) clearTimeout(v.timer);
   v.timer = setTimeout(() => {
     if (room.vote !== v || v.paused) return;
+    if (waitingForOffline(room)) { expireOffline(room, v); return; }
     finishVote(room, 'Zeit abgelaufen');
   }, v.remainingMs);
   v.deadline = Date.now() + v.remainingMs;
@@ -255,12 +269,26 @@ function openVote(room, kind) {
   room.vote = { kind, votes: {}, remainingMs: VOTE_MS, deadline: 0, paused: false, timer: null };
   armVoteTimer(room);
 }
+/* Zeit abgelaufen, aber noch Spieler offline: diese entfernen, danach regulär auswerten. */
+function expireOffline(room, v) {
+  v.timer = null;
+  for (const s of offlineHumans(room)) {
+    if (room.vote !== v) break;          // Abstimmung ggf. beim Entfernen hinfällig geworden
+    systemChat(room, `${s.name} war bei Ablauf der Startabstimmung offline und wurde aus dem Raum entfernt.`);
+    leaveCurrent(s.id);                  // entfernt den Sitz, übergibt ggf. den Host, wertet aus/broadcastet
+  }
+  if (room.vote !== v || rooms.get(room.code) !== room) return;
+  finishVote(room, 'Zeit abgelaufen');   // Timer läuft nur ohne Nein-Stimme ab
+}
 /* Nach jeder Stimm-/Sitzänderung: sofort starten, pausieren oder fortsetzen. */
 function evaluateVote(room) {
   const v = room.vote;
   if (!v) return false;
+  // Stimmen getrennter Spieler verfallen – sie gelten als nicht abgestimmt (auch nach Reconnect).
+  for (const s of room.seats) if (!s.bot && !s.connected) delete v.votes[s.id];
   const vs = voters(room);
-  if (vs.length > 0 && vs.every(s => v.votes[s.id] === 'yes')) {
+  // Offline-Spieler vorhanden: kein vorzeitiger Start, der Timer muss ablaufen.
+  if (!waitingForOffline(room) && vs.length > 0 && vs.every(s => v.votes[s.id] === 'yes')) {
     finishVote(room, null);
     return true;
   }
