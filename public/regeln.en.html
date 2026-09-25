@@ -53,6 +53,16 @@
   .yt-port{aspect-ratio:9/16;max-width:360px;margin:0 auto;display:none}
   @media (orientation:portrait){.yt-land{display:none}.yt-port{display:block}}
 </style>
+<script>
+/* Sprache wie im Spiel (i18n.js): localStorage → ?lang= → Browsersprache */
+(function(){
+  var S=["de","en"],l=null;
+  try{l=localStorage.getItem("portriga_lang");}catch(e){}
+  if(S.indexOf(l)<0) l=new URLSearchParams(location.search).get("lang");
+  if(S.indexOf(l)<0){var n=(navigator.languages&&navigator.languages[0])||navigator.language||"de";l=/^de\b/i.test(n)?"de":"en";}
+  if(l!=="en") location.replace("regeln.html"+location.search+location.hash);
+})();
+</script>
 </head>
 <body>
 <header>
@@ -60,7 +70,7 @@
   <nav class="nav">
     <a href="./">Play online</a>
     <a href="regeln.en.html" class="active">Rules</a>
-    <a href="regeln.html" lang="de">🌐 Deutsch</a>
+    <a href="regeln.html" lang="de" onclick="try{localStorage.setItem('portriga_lang','de')}catch(e){}">🌐 Deutsch</a>
   </nav>
 </header>
 <main>
