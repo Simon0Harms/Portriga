@@ -243,6 +243,37 @@ function cardSrc(key){
   const en = window.PortrigaI18n && window.PortrigaI18n.lang === 'en';
   return (en && /-[BD]$/.test(key) ? 'cards/en/' : 'cards/') + key + '.svg';
 }
+// Hand-Anordnung: Farben so reihen, dass Schwarz/Rot möglichst abwechseln;
+// unter den dabei gleich guten Reihenfolgen kommt Trumpf zuerst.
+// Innerhalb einer Farbe bleibt die Server-Sortierung (Rang) erhalten.
+const SUIT_ORDER = ['kreuz','pik','herz','karo'];
+function suitPerms(arr){
+  if (arr.length<=1) return [arr.slice()];
+  const out=[];
+  arr.forEach((x,i)=>{ for (const r of suitPerms(arr.slice(0,i).concat(arr.slice(i+1)))) out.push([x,...r]); });
+  return out;
+}
+function orderHand(hand, trumpSuit){
+  const present = SUIT_ORDER.filter(s => hand.some(c => c.suit===s));
+  let best=null, bestKey=null;
+  for (const perm of suitPerms(present)){ // max. 24 Permutationen
+    let clashes=0;
+    for (let i=1;i<perm.length;i++) if (SUIT[perm[i]].color===SUIT[perm[i-1]].color) clashes++;
+    const key=[clashes, trumpSuit && perm[0]===trumpSuit ? 0 : 1];
+    if (!best || key[0]<bestKey[0] || (key[0]===bestKey[0] && key[1]<bestKey[1])){ best=perm; bestKey=key; }
+  }
+  const idx = s => best.indexOf(s);
+  return hand.map((c,i)=>({c,i})).sort((a,b)=> idx(a.c.suit)-idx(b.c.suit) || a.i-b.i).map(x=>x.c);
+}
+// Farbabstände nur, wenn die Hand damit noch in eine Zeile passt.
+function fitSuitGaps(hand){
+  const cards=[...hand.children]; if (!cards.length) return;
+  hand.classList.remove('no-suit-gap');
+  const top=cards[0].offsetTop;
+  if (cards.some(el=>el.offsetTop!==top)) hand.classList.add('no-suit-gap');
+}
+window.addEventListener('resize', ()=>{ const h=$('myhand'); if (h) fitSuitGaps(h); });
+
 function cardEl(card, opts={}){
   const el = document.createElement('div');
   el.className = 'card ' + (SUIT[card.suit].color==='red'?'red':'');
@@ -343,14 +374,18 @@ function renderGame(m){
   const hand = $('myhand'); hand.innerHTML='';
   const legal = new Set(v.myLegal||[]);
   const myTurnPlaying = v.phase==='playing' && v.turnIdx===me;
-  v.myHand.forEach(c => {
+  let prevSuit = null;
+  orderHand(v.myHand, v.trumpSuit).forEach(c => {
     const el = cardEl(c);
+    if (prevSuit && c.suit !== prevSuit) el.classList.add('suit-gap');
+    prevSuit = c.suit;
     if (myTurnPlaying){
       if (legal.has(c.id)){ el.classList.add('playable'); el.onclick=()=>send({type:'play',cardId:c.id}); }
       else el.classList.add('illegal');
     }
     hand.appendChild(el);
   });
+  fitSuitGaps(hand);
 
   // Overlay Runden-/Spielende
   const ov = $('overlay');

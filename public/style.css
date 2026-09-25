@@ -111,6 +111,8 @@ button.link{background:none;border:none;color:var(--accent);padding:.3em;text-de
 #my-meta{text-align:center;font-size:.85rem;color:#cde;margin-bottom:6px}
 #myhand{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 #myhand .card{cursor:pointer;transition:transform .1s}
+#myhand .card.suit-gap{margin-left:14px}
+#myhand.no-suit-gap .card.suit-gap{margin-left:0}
 #myhand .card.playable:hover{transform:translateY(-8px)}
 #myhand .card.illegal{opacity:.4;cursor:not-allowed;filter:grayscale(.5)}
 
