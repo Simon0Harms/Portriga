@@ -8,6 +8,26 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const readOut = dir => fs.readdirSync(dir).filter(n => n.endsWith('.json'))
   .map(n => { const f = path.join(dir, n); const j = JSON.parse(fs.readFileSync(f, 'utf8')); fs.unlinkSync(f); return j; });
 
+// ---- Unit: Standard = Ersteller-Limit aus ----
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portriga-ann-'));
+  const a = createAnnouncer({ room: '#spiele:example.org', outboxDir: dir, log: () => {} });
+  assert.ok(a.announce({ code: 'AAAA', mode: 'public', host: 'x', players: 1, maxPlayers: 7, creatorKey: 'k1' }));
+  assert.ok(a.announce({ code: 'BBBB', mode: 'public', host: 'x', players: 1, maxPlayers: 7, creatorKey: 'k1' }), 'kein Ersteller-Limit per Standard');
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+// ---- Unit: 300 s = eine pro 5 Minuten ----
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portriga-ann-'));
+  let t = 1e6;
+  const a = createAnnouncer({ room: '#spiele:example.org', outboxDir: dir, perCreatorSec: 300, now: () => t, log: () => {} });
+  assert.ok(a.announce({ code: 'CCCC', mode: 'public', host: 'x', players: 1, maxPlayers: 7, creatorKey: 'k1' }));
+  t += 299e3;
+  assert.strictEqual(a.announce({ code: 'DDDD', mode: 'public', host: 'x', players: 1, maxPlayers: 7, creatorKey: 'k1' }), false);
+  t += 2e3;
+  assert.ok(a.announce({ code: 'DDDD', mode: 'public', host: 'x', players: 1, maxPlayers: 7, creatorKey: 'k1' }));
+  fs.rmSync(dir, { recursive: true, force: true });
+}
 // ---- Unit ----
 {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portriga-ann-'));

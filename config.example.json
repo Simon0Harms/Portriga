@@ -36,7 +36,7 @@
   "announce": {
     "room": "",
     "link": "",
-    "perCreatorSec": 120,
+    "perCreatorSec": 0,
     "maxPerHour": 30
   }
 }

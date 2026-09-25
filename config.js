@@ -38,7 +38,7 @@ function loadConfig(opts = {}) {
     announce: {
       room: '',             // Matrix-Raum (!id:server oder #alias:server) für neue öffentliche/Ranglisten-Spiele; leer = aus
       link: '',             // Link für die Werbung in der App; leer = https://matrix.to/#/<room>
-      perCreatorSec: 120,   // max. eine Ankündigung je Ersteller (Konto/IP) in diesem Zeitraum
+      perCreatorSec: 0,     // max. eine Ankündigung je Ersteller (Konto/IP) in diesem Zeitraum (s); 0 = aus
       maxPerHour: 30,       // globales Limit pro Stunde
     },
   };

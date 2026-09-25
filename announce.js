@@ -9,7 +9,7 @@
  * aber ausschließlich dorthin (Allowlist im Sidecar: PORTRIGA_ANNOUNCE_ROOM).
  *
  * Schutz vor Spam: je Ersteller (Konto bzw. IP) höchstens eine Ankündigung pro
- * `perCreatorSec`, insgesamt höchstens `maxPerHour`. Jeder Raum wird nur einmal
+ * `perCreatorSec` (Standard 0 = aus), insgesamt höchstens `maxPerHour`. Jeder Raum wird nur einmal
  * angekündigt.
  *
  * Rückzug: Startet das Spiel (oder wird der Raum geschlossen bzw. wieder privat),
@@ -33,7 +33,7 @@ function clean(s, max = 40) {
 function createAnnouncer(opts) {
   const o = Object.assign({
     room: '', link: '', outboxDir: '', publicUrl: '',
-    perCreatorSec: 120, maxPerHour: 30,
+    perCreatorSec: 0, maxPerHour: 30,
     now: () => Date.now(),
     log: (...a) => console.log('[announce]', ...a),
   }, opts || {});
@@ -76,7 +76,7 @@ function createAnnouncer(opts) {
     recent = recent.filter(x => t - x < 3600e3);
     if (recent.length >= o.maxPerHour) { o.log('Stundenlimit erreicht – nicht angekündigt:', r.code); return false; }
     const key = String(r.creatorKey || '');
-    if (key) {
+    if (key && o.perCreatorSec > 0) {
       const last = lastByCreator.get(key);
       if (last && t - last < o.perCreatorSec * 1000) { o.log('Ersteller-Limit – nicht angekündigt:', r.code); return false; }
     }

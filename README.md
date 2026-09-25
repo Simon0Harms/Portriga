@@ -274,7 +274,7 @@ Sicherheit: Der Sidecar sendet unverschlüsselt **ausschließlich** Aufträge mi
 nur in genau diesen konfigurierten Raum (`m.notice`). Alle Konto-Nachrichten (Login-Links, Codes) bleiben
 bei `PORTRIGA_REQUIRE_ENCRYPTION=1` auf verschlüsselte DMs beschränkt und werden nie in den Ankündigungsraum
 geschickt. Nachrichten und Austritte im Ankündigungsraum werden ignoriert (keine Befehle aus der Öffentlichkeit).
-Spam-Schutz: je Ersteller (Konto bzw. IP) max. eine Ankündigung pro `announce.perCreatorSec` (Standard 120 s),
+Spam-Schutz: je Ersteller (Konto bzw. IP) max. eine Ankündigung pro `announce.perCreatorSec` (Standard 0 = aus; z. B. `300` = eine pro 5 Minuten),
 insgesamt max. `announce.maxPerHour` (Standard 30).
 
 Werbung für den Raum: Ist der Raum konfiguriert, zeigt die App auf dem Startbildschirm und in der Lobby einen
@@ -598,7 +598,7 @@ Security: the sidecar sends unencrypted **only** jobs marked `"announce": true` 
 configured room (`m.notice`). All account messages (login links, codes) stay restricted to encrypted DMs with
 `PORTRIGA_REQUIRE_ENCRYPTION=1` and are never sent to the announcement room. Messages and leaves in the
 announcement room are ignored (no commands from the public). Spam protection: per creator (account or IP) at
-most one announcement per `announce.perCreatorSec` (default 120 s), at most `announce.maxPerHour` overall (default 30).
+most one announcement per `announce.perCreatorSec` (default 0 = off; e.g. `300` = one per 5 minutes), at most `announce.maxPerHour` overall (default 30).
 
 Promoting the room: once configured, the app shows a note with a link on the start screen and in the lobby
 (`announce.link`, default `https://matrix.to/#/<room>`), and the welcome message after registration mentions
