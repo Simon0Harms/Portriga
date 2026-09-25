@@ -66,7 +66,13 @@ function send(m){
 
 function onMessage(m){
   switch(m.type){
-    case 'ready': break;
+    case 'ready':
+      // Server: diese Client-ID sitzt in keinem Raum. Zeigt die UI noch Lobby/Spiel
+      // (z. B. nach Reconnect), zurück auf den Startbildschirm statt „Kein Raum.“-Fehlern.
+      if (!$('screen-lobby').classList.contains('hidden') || !$('screen-game').classList.contains('hidden')) {
+        toast('⚠ Raum nicht mehr vorhanden.'); exitRoomUI(); leaveChatUI(); show('home');
+      }
+      break;
     case 'adoptClientId':
       // Server: dieses Konto sitzt schon im Raum – dessen Client-ID übernehmen und per Reconnect einsteigen.
       if (m.clientId){
@@ -78,7 +84,7 @@ function onMessage(m){
     case 'replaced':
       replacedElsewhere = true;
       toast('⚠ ' + (m.message || 'Sitz wurde auf einem anderen Gerät übernommen.'));
-      exitRoomUI(); leaveChatUI(); show('home');
+      exitRoomUI(); leaveChatUI(); show('home'); refreshHomeRanking();
       break;
     case 'roomList': renderRoomList(m.rooms || []); break;
     case 'account': setAccount(m.user || null); break;
@@ -100,9 +106,9 @@ function onMessage(m){
     case 'chat': addChatMsg(m.msg); break;
     case 'toast': toast(m.message); break;
     case 'error': toast('⚠ ' + m.message); break;
-    case 'roomClosed': toast(m.reason || 'Raum geschlossen'); exitRoomUI(); leaveChatUI(); show('home'); break;
-    case 'kicked': toast('⚠ ' + (m.reason || 'Du wurdest aus dem Raum entfernt.')); exitRoomUI(); leaveChatUI(); show('home'); break;
-    case 'left': exitRoomUI(); leaveChatUI(); show('home'); break;
+    case 'roomClosed': toast(m.reason || 'Raum geschlossen'); exitRoomUI(); leaveChatUI(); show('home'); refreshHomeRanking(); break;
+    case 'kicked': toast('⚠ ' + (m.reason || 'Du wurdest aus dem Raum entfernt.')); exitRoomUI(); leaveChatUI(); show('home'); refreshHomeRanking(); break;
+    case 'left': exitRoomUI(); leaveChatUI(); show('home'); refreshHomeRanking(); break;
   }
 }
 
@@ -110,6 +116,13 @@ function onMessage(m){
 function show(name){
   for (const s of ['home','lobby','game']) $('screen-'+s).classList.toggle('hidden', s!==name);
 }
+// Rangliste neben dem Startpanel: nur bei breitem Bildschirm laden (Breakpoint wie in style.css)
+const wideHomeMQ = window.matchMedia('(min-width:1000px)');
+function refreshHomeRanking(){
+  if (wideHomeMQ.matches && !$('screen-home').classList.contains('hidden'))
+    loadRanking('home-ranking-table', 'home-ranking-empty');
+}
+wideHomeMQ.addEventListener('change', refreshHomeRanking);
 
 // ---------- Home ----------
 const MODE_LABEL = { private:'🔒 Privat', public:'🌐 Öffentlich', ranked:'🏅 Rangliste' };
@@ -173,6 +186,7 @@ async function loadRanking(tableId = 'ranking-table', emptyId = 'ranking-empty')
     $(emptyId).classList.toggle('hidden', (d.players || []).length > 0);
   } catch (e) { toast('Rangliste konnte nicht geladen werden.'); }
 }
+refreshHomeRanking();
 $('btn-ranking').onclick = () => {
   const box = $('ranking-box');
   const open = box.classList.toggle('hidden') === false;

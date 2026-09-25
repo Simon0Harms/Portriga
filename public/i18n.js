@@ -235,7 +235,7 @@
     'Keine Mute-Abstimmung aktiv.': 'No active mute vote.',
     'Du bist stummgeschaltet und kannst nicht schreiben.': 'You are muted and cannot write.',
     'Kein hello gesendet.': 'No hello sent.',
-    'Kein Raum.': 'No room.', 'Nur der Host darf das.': 'Only the host may do that.',
+    'Kein Raum.': 'No room.', '⚠ Raum nicht mehr vorhanden.': '⚠ Room no longer exists.', 'Raum nicht mehr vorhanden.': 'Room no longer exists.', 'Nur der Host darf das.': 'Only the host may do that.',
     'Kein laufendes Spiel.': 'No game running.',
     'Du sitzt nicht in diesem Raum.': 'You are not seated in this room.',
     'Gerade keine Ansage.': 'Not bidding right now.',
@@ -362,7 +362,7 @@
   }
 
   // ---------------------------------------------------------------- DOM
-  const SKIP = 'script,style,textarea,input,.cm:not(.sys),.code-badge,.reg-code,#acct-name,#set-name,#set-mxid,#lobby-link,#reg-bot,#rl-bot,#del-bot,.lang-toggle,#ranking-table tbody,[data-no-i18n]';
+  const SKIP = 'script,style,textarea,input,.cm:not(.sys),.code-badge,.reg-code,#acct-name,#set-name,#set-mxid,#lobby-link,#reg-bot,#rl-bot,#del-bot,.lang-toggle,#ranking-table tbody,#home-ranking-table tbody,[data-no-i18n]';
   const ATTRS = ['placeholder', 'title', 'aria-label', 'alt'];
   const textMem = new WeakMap(); // Textknoten → { de, out }
   const attrMem = new WeakMap(); // Element → { [attr]: { de, out } }

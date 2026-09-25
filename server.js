@@ -192,7 +192,7 @@ function pushChat(room, msg) {
   if (room.chat.length > CHAT_MAX) room.chat.shift();
 }
 function broadcastChat(room, msg) {
-  for (const s of room.seats) if (!s.bot) send(sockets.get(s.id), { type: 'chat', msg });
+  for (const s of room.seats) if (!s.bot && isInRoom(room, s.id)) send(sockets.get(s.id), { type: 'chat', msg });
 }
 function systemChat(room, text) {
   const msg = { system: true, text, ts: Date.now() };
@@ -211,7 +211,7 @@ function voiceMembers(room) {
 }
 function broadcastVoice(room) {
   const members = voiceMembers(room);
-  for (const s of room.seats) if (!s.bot) send(sockets.get(s.id), { type: 'voice', members });
+  for (const s of room.seats) if (!s.bot && isInRoom(room, s.id)) send(sockets.get(s.id), { type: 'voice', members });
 }
 function leaveVoice(room, clientId) {
   if (room.voice && room.voice.delete(clientId)) broadcastVoice(room);
@@ -537,12 +537,12 @@ function broadcast(room) {
   scheduleRoomList();
   if (!room.game) {
     for (const s of room.seats) {
-      if (!s.bot) send(sockets.get(s.id), { ...lobbyView(room), youId: s.id });
+      if (!s.bot && isInRoom(room, s.id)) send(sockets.get(s.id), { ...lobbyView(room), youId: s.id });
     }
     return;
   }
   for (const s of room.seats) {
-    if (s.bot) continue;
+    if (s.bot || !isInRoom(room, s.id)) continue;
     const ws = sockets.get(s.id);
     if (!ws) continue;
     send(ws, {
@@ -625,9 +625,21 @@ function checkRankedAllowed(room) {
 
 function seatOf(room, clientId) { return room.seats.find(s => s.id === clientId); }
 
+// Nur Spieler, deren Zuordnung (noch) auf diesen Raum zeigt. Wer ein beendetes Spiel
+// verlassen hat, behält dort seinen Sitz, sitzt aber evtl. schon in einem neuen Raum –
+// dessen Zuordnung darf beim Aufräumen des alten Raums nicht gelöscht werden.
+function isInRoom(room, clientId) { return clientRoom.get(clientId) === room.code; }
+function discardRoom(room) {
+  clearVote(room);
+  clearKick(room);
+  clearMuteVote(room);
+  for (const s of room.seats) if (!s.bot && isInRoom(room, s.id)) clientRoom.delete(s.id);
+  if (rooms.get(room.code) === room) rooms.delete(room.code);
+  scheduleRoomList();
+}
 function closeRoom(room, reason) {
   for (const s of room.seats) {
-    if (!s.bot) {
+    if (!s.bot && isInRoom(room, s.id)) {
       send(sockets.get(s.id), { type: 'roomClosed', reason });
       clientRoom.delete(s.id);
     }
@@ -653,7 +665,11 @@ wss.on('connection', (ws, req) => {
     let m;
     try { m = JSON.parse(raw); } catch { return; }
     try { handle(ws, m); }
-    catch (e) { err(ws, e.message || 'Fehler'); }
+    catch (e) {
+      err(ws, e.message || 'Fehler');
+      // Client zeigt noch einen Raum, der Server kennt ihn aber nicht (mehr) -> UI zurücksetzen.
+      if (e.noRoom) { send(ws, { type: 'left' }); send(ws, { type: 'roomList', rooms: roomListView() }); }
+    }
   });
 
   ws.on('close', () => {
@@ -673,13 +689,8 @@ wss.on('connection', (ws, req) => {
     const humans = room.seats.filter(s => !s.bot);
     if (humans.every(s => !s.connected)) {
       // niemand mehr da: Raum verwerfen
-      clearVote(room);
-      clearKick(room);
-      clearMuteVote(room);
       retractAnnouncement(room, 'Raum geschlossen');
-      rooms.delete(room.code);
-      for (const s of room.seats) clientRoom.delete(s.id);
-      scheduleRoomList();
+      discardRoom(room);
       return;
     }
     broadcast(room);
@@ -992,6 +1003,7 @@ function handle(ws, m) {
 }
 
 // ---- Helfer ----
+function noRoomError(msg) { const e = new Error(msg); e.noRoom = true; return e; }
 function requireId(ws) { if (!ws.clientId) throw new Error('Kein hello gesendet.'); }
 function cleanName(n) { return (String(n || '').trim().slice(0, 20)) || 'Spieler'; }
 // Angemeldet: Kontoname ist fest. Gast: freier Name, aber keine registrierten Kontonamen.
@@ -1007,25 +1019,26 @@ function playerName(ws, n) {
 function hostRoom(ws) {
   requireId(ws);
   const room = rooms.get(clientRoom.get(ws.clientId));
-  if (!room) throw new Error('Kein Raum.');
+  if (!room) throw noRoomError('Kein Raum.');
   if (room.hostId !== ws.clientId) throw new Error('Nur der Host darf das.');
   return room;
 }
 function playerRoom(ws) {
   requireId(ws);
   const room = rooms.get(clientRoom.get(ws.clientId));
-  if (!room || !room.game) throw new Error('Kein laufendes Spiel.');
+  if (!room) throw noRoomError('Kein laufendes Spiel.');
+  if (!room.game) throw new Error('Kein laufendes Spiel.');
   const seat = seatOf(room, ws.clientId);
-  if (!seat) throw new Error('Du sitzt nicht in diesem Raum.');
+  if (!seat) throw noRoomError('Du sitzt nicht in diesem Raum.');
   return { room, seat };
 }
 // Raum + Sitz, egal ob Lobby oder laufendes Spiel (für Chat).
 function memberRoom(ws) {
   requireId(ws);
   const room = rooms.get(clientRoom.get(ws.clientId));
-  if (!room) throw new Error('Kein Raum.');
+  if (!room) throw noRoomError('Kein Raum.');
   const seat = seatOf(room, ws.clientId);
-  if (!seat) throw new Error('Du sitzt nicht in diesem Raum.');
+  if (!seat) throw noRoomError('Du sitzt nicht in diesem Raum.');
   return { room, seat };
 }
 function leaveCurrent(clientId) {
@@ -1038,6 +1051,13 @@ function leaveCurrent(clientId) {
     // während des Spiels: Sitz bleibt (Reconnect möglich), nur getrennt markieren
     const seat = seatOf(room, clientId);
     if (seat) seat.connected = false;
+    // Kein Mensch mehr diesem Raum zugeordnet (z. B. alle haben das beendete Spiel verlassen):
+    // Raum verwerfen, statt ihn mit veralteten Sitzen im Speicher zu lassen.
+    if (!room.seats.some(s => !s.bot && isInRoom(room, s.id))) {
+      retractAnnouncement(room, 'Raum geschlossen');
+      discardRoom(room);
+      return;
+    }
     if (!evaluateVote(room)) broadcast(room);
     broadcastVoice(room);
     return;

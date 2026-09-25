@@ -352,3 +352,13 @@ select option{background:#0b3d26;color:#fff}
 #trick-cards{padding-top:calc(20px * var(--card-scale,1))}
 .lt-cards{padding-top:calc(20px * var(--card-scale,1))}
 @media (max-height:900px){ #trick-cards{padding-top:calc(16px * var(--card-scale,1))} }
+
+/* Rangliste auf der Startseite: bei genug Platz rechts neben dem Startpanel (wie in der Ranglisten-Lobby) */
+.home-ranking{display:none}
+.home-ranking h2{margin-top:0}
+@media (min-width:1000px){
+  #screen-home{gap:16px;align-items:flex-start;padding-top:max(16px,4vh)}
+  #screen-home .home-ranking{display:block}
+  .home-ranking .panel{width:min(520px,44vw);max-height:92dvh;overflow:auto}
+  #screen-home .row:has(#btn-ranking), #ranking-box{display:none !important}
+}
