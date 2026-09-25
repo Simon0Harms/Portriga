@@ -87,6 +87,7 @@
     'Du bist dran: Stiche ansagen': 'Your turn: bid your tricks',
     'Du bist dran: Karte spielen': 'Your turn: play a card',
     'Sprachausgabe einschalten': 'Turn on voice output',
+    'Kartengröße': 'Card size', 'Karten verkleinern': 'Smaller cards', 'Karten vergrößern': 'Larger cards',
     'Sprachausgabe ausschalten': 'Turn off voice output',
     'Sprachausgabe umschalten': 'Toggle voice output',
     'Sprachausgabe eingeschaltet': 'Voice output on',

@@ -340,3 +340,13 @@ select option{background:#0b3d26;color:#fff}
   .lobby-ranking.open{display:flex;position:fixed;inset:0;z-index:60;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.55)}
   .lobby-ranking .panel{max-height:92dvh;overflow:auto}
 }
+
+/* Vom Nutzer einstellbare Kartengröße (--card-scale wird in app.js gesetzt, lokal gemerkt).
+   zoom skaliert inkl. Layout, sodass Umbruch/Abstände mitwachsen. */
+#myhand .card,#trick-cards .card,#last-trick-side .card{zoom:var(--card-scale,1)}
+.card-size{display:inline-flex;gap:4px}
+/* Platz über den Stichkarten für die Namen (.who liegt oberhalb der Karte und wächst mit dem Zoom),
+   damit sie bei großen Karten nicht in den Gegenspieler bzw. die Überschrift ragen. */
+#trick-cards{padding-top:calc(20px * var(--card-scale,1))}
+.lt-cards{padding-top:calc(20px * var(--card-scale,1))}
+@media (max-height:900px){ #trick-cards{padding-top:calc(16px * var(--card-scale,1))} }

@@ -1219,3 +1219,24 @@ if ($('btn-tts')){
   };
   ttsUpdateBtn();
 }
+
+// ---------------------------------------------------------------- Kartengröße
+// Nutzer kann die Kartengröße im Spiel-Header anpassen; Wert wird lokal gemerkt.
+const CARD_SCALE_KEY = 'portriga_card_scale';
+const CARD_SCALE_MIN = 0.6, CARD_SCALE_MAX = 1.8, CARD_SCALE_STEP = 0.1;
+let cardScale = 1;
+try { const v = parseFloat(localStorage.getItem(CARD_SCALE_KEY)); if (v >= CARD_SCALE_MIN && v <= CARD_SCALE_MAX) cardScale = v; } catch (_) {}
+function applyCardScale(){
+  document.documentElement.style.setProperty('--card-scale', String(cardScale));
+  const s = $('btn-card-smaller'), l = $('btn-card-larger');
+  if (s) s.disabled = cardScale <= CARD_SCALE_MIN + 1e-9;
+  if (l) l.disabled = cardScale >= CARD_SCALE_MAX - 1e-9;
+}
+function changeCardScale(d){
+  cardScale = Math.round(Math.min(CARD_SCALE_MAX, Math.max(CARD_SCALE_MIN, cardScale + d)) * 10) / 10;
+  try { localStorage.setItem(CARD_SCALE_KEY, String(cardScale)); } catch (_) {}
+  applyCardScale();
+}
+if ($('btn-card-smaller')) $('btn-card-smaller').onclick = () => changeCardScale(-CARD_SCALE_STEP);
+if ($('btn-card-larger')) $('btn-card-larger').onclick = () => changeCardScale(CARD_SCALE_STEP);
+applyCardScale();
