@@ -240,6 +240,21 @@
     </div>
   </div>
 
+  <!-- Rückfrage: Direktlink geöffnet, aber „Raum erstellen“ geklickt -->
+  <div id="create-or-join-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="coj-title">
+    <div class="panel">
+      <button id="coj-close" class="link modal-x" title="Schließen" aria-label="Schließen">✕</button>
+      <h2 id="coj-title">Neuen Raum erstellen?</h2>
+      <p>Du hast einen Einladungslink für Raum <b id="coj-code"></b> geöffnet.</p>
+      <p>Möchtest du diesem Raum beitreten oder wirklich einen neuen Raum erstellen?</p>
+      <div class="row">
+        <button id="btn-coj-join" class="primary">Raum beitreten</button>
+        <button id="btn-coj-create">Neuen Raum erstellen</button>
+        <button id="btn-coj-cancel" class="link">Abbrechen</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Konto-Dialog: Anmelden / Registrieren / Konto -->
   <div id="acct-modal" class="modal hidden">
     <div class="panel">

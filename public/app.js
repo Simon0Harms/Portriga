@@ -83,7 +83,7 @@ function onMessage(m){
     case 'roomList': renderRoomList(m.rooms || []); break;
     case 'account': setAccount(m.user || null); break;
     case 'joined':
-      hostId = null; enterRoomUI(); show('lobby'); break;
+      pendingJoinCode = ''; hostId = null; enterRoomUI(); show('lobby'); break;
     case 'state':
       if (m.hostId) hostId = m.hostId;
       enterRoomUI();
@@ -113,12 +113,34 @@ function show(name){
 
 // ---------- Home ----------
 const MODE_LABEL = { private:'🔒 Privat', public:'🌐 Öffentlich', ranked:'🏅 Rangliste' };
-$('btn-create').onclick = () => {
+// Über einen Direktlink (?join=CODE) gekommen: vor dem Erstellen nachfragen,
+// ob wirklich ein neuer Raum gewünscht ist oder doch der verlinkte Raum.
+let pendingJoinCode = /^[A-Z0-9]{4}$/.test(joinParam) ? joinParam : '';
+function doCreateRoom(){
   saveName();
   const mode = $('create-mode').value;
   if (mode === 'ranked' && !account) return openGuestRanked();
   send({ type:'createRoom', name: myName, mode });
+}
+$('btn-create').onclick = () => {
+  if (pendingJoinCode) return openCreateOrJoin();
+  doCreateRoom();
 };
+function openCreateOrJoin(){
+  $('coj-code').textContent = pendingJoinCode;
+  $('create-or-join-modal').classList.remove('hidden');
+  setTimeout(()=>$('btn-coj-join').focus(), 30);
+}
+function closeCreateOrJoin(){ $('create-or-join-modal').classList.add('hidden'); }
+$('btn-coj-join').onclick = () => {
+  const code = pendingJoinCode; pendingJoinCode = ''; closeCreateOrJoin();
+  saveName(); send({ type:'joinRoom', code, name: myName });
+};
+$('btn-coj-create').onclick = () => { pendingJoinCode = ''; closeCreateOrJoin(); doCreateRoom(); };
+$('btn-coj-cancel').onclick = closeCreateOrJoin;
+$('coj-close').onclick = closeCreateOrJoin;
+$('create-or-join-modal').addEventListener('click', e => { if (e.target === $('create-or-join-modal')) closeCreateOrJoin(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('create-or-join-modal').classList.contains('hidden')) closeCreateOrJoin(); });
 function renderRoomList(list){
   const ul = $('room-list'); ul.innerHTML = '';
   $('room-list-empty').classList.toggle('hidden', list.length > 0);
