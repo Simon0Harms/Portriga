@@ -22,6 +22,7 @@ if (/^[A-Z0-9]{4}$/.test(joinParam)) {
   history.replaceState(null, '', location.pathname + location.hash);
 }
 
+let replacedElsewhere = false;
 let ws, wsReady = false, lastState = null, myId = clientId, hostId = null;
 
 function connect() {
@@ -42,7 +43,7 @@ function connect() {
   ws.onclose = (e) => {
     wsReady = false;
     console.warn('[Portriga] WebSocket geschlossen', e && e.code, e && e.reason);
-    setTimeout(connect, 1200);
+    if (!replacedElsewhere) setTimeout(connect, 1200);
   };
   ws.onmessage = ev => onMessage(JSON.parse(ev.data));
 }
@@ -66,6 +67,19 @@ function send(m){
 function onMessage(m){
   switch(m.type){
     case 'ready': break;
+    case 'adoptClientId':
+      // Server: dieses Konto sitzt schon im Raum – dessen Client-ID übernehmen und per Reconnect einsteigen.
+      if (m.clientId){
+        clientId = myId = String(m.clientId);
+        try { localStorage.setItem('portriga_cid', clientId); } catch (_) {}
+        sendRaw({ type:'hello', clientId, name: myName || 'Spieler' });
+      }
+      break;
+    case 'replaced':
+      replacedElsewhere = true;
+      toast('⚠ ' + (m.message || 'Sitz wurde auf einem anderen Gerät übernommen.'));
+      exitRoomUI(); leaveChatUI(); show('home');
+      break;
     case 'roomList': renderRoomList(m.rooms || []); break;
     case 'account': setAccount(m.user || null); break;
     case 'joined':

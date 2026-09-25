@@ -209,6 +209,7 @@
     'Du wurdest aus diesem Raum gekickt.': 'You were kicked from this room.',
     'Ranglisten-Raum: Beitritt nur mit angemeldetem Konto.': 'Ranked room: signed-in accounts only.',
     'Du sitzt mit diesem Konto bereits in diesem Raum.': 'You are already seated in this room with this account.',
+    'Dein Platz wurde von einem anderen Gerät/Tab übernommen.': 'Your seat was taken over by another device/tab.',
     'Ranglisten-Spiele benötigen Benutzerkonten (auf diesem Server deaktiviert).': 'Ranked games require user accounts (disabled on this server).',
     'Ranglisten-Spiele sind ohne Bots – bitte zuerst alle Bots entfernen.': 'Ranked games are without bots – please remove all bots first.',
     'Ranglisten-Spiele nur mit angemeldeten Konten – im Raum sitzen noch Gäste.': 'Ranked games only with signed-in accounts – there are still guests in the room.',

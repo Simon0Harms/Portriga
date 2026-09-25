@@ -659,7 +659,9 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     const id = ws.clientId;
     if (!id) return;
-    if (sockets.get(id) === ws) sockets.delete(id);
+    // Abgelöster Socket (Sitz wurde übernommen): Sitz nicht als getrennt markieren.
+    if (sockets.get(id) !== ws) return;
+    sockets.delete(id);
     const code = clientRoom.get(id);
     const room = code && rooms.get(code);
     if (!room) return;
@@ -690,6 +692,14 @@ function handle(ws, m) {
     case 'hello': {
       const id = String(m.clientId || '').slice(0, 40);
       if (!id) return err(ws, 'Ungültige Client-ID.');
+      // Socket wechselt die Client-ID (Sitzübernahme): alte Zuordnung lösen.
+      if (ws.clientId && ws.clientId !== id && sockets.get(ws.clientId) === ws) sockets.delete(ws.clientId);
+      // Läuft dieselbe Client-ID noch auf einem anderen Gerät/Tab: dort ablösen.
+      const prevWs = sockets.get(id);
+      if (prevWs && prevWs !== ws) {
+        send(prevWs, { type: 'replaced', message: 'Dein Platz wurde von einem anderen Gerät/Tab übernommen.' });
+        try { prevWs.close(); } catch (_) {}
+      }
       ws.clientId = id;
       sockets.set(id, ws);
       send(ws, { type: 'rtcConfig', iceServers: iceServers() });
@@ -739,6 +749,16 @@ function handle(ws, m) {
       requireId(ws);
       const room = rooms.get(String(m.code || '').toUpperCase());
       if (!room) return err(ws, 'Raum nicht gefunden.');
+      // Konto sitzt bereits (mit anderer Client-ID, z. B. anderes Gerät/Browser) in diesem Raum:
+      // Sitz übernehmen statt zusätzlichen Platz anzulegen – auch während eines laufenden Spiels.
+      if (ws.account && !seatOf(room, ws.clientId)) {
+        const own = room.seats.find(s => !s.bot && s.accountId === ws.account.id);
+        if (own) {
+          if (clientRoom.get(ws.clientId) !== room.code) leaveCurrent(ws.clientId);
+          send(ws, { type: 'adoptClientId', clientId: own.id });
+          return;
+        }
+      }
       if (room.game) return err(ws, 'Spiel läuft bereits – kein Beitritt möglich.');
       if (isBanned(room, ws)) return err(ws, 'Du wurdest aus diesem Raum gekickt.');
       let seat = seatOf(room, ws.clientId);
