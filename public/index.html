@@ -84,6 +84,7 @@
       <p>Raumcode: <span id="lobby-code" class="code-badge"></span>
         <button id="btn-copy" class="link">kopieren</button>
         <span id="lobby-mode" class="mode-badge"></span></p>
+      <div class="row"><button id="btn-lobby-ranking" class="link hidden" aria-controls="lobby-ranking">🏅 Rangliste anzeigen</button></div>
       <label id="lobby-mode-label" class="hidden">Spielmodus
         <select id="lobby-mode-select">
           <option value="private">Privat</option>
@@ -110,6 +111,18 @@
       <div class="row"><a class="btn-link" href="regeln.html" target="portriga-regeln" rel="noopener">📖 Spielregeln</a></div>
       <button id="btn-leave-lobby" class="link">Raum verlassen</button>
     </div>
+    <!-- Rangliste in der Lobby (nur bei Ranglisten-Spielen): breit = rechte Spalte, schmal = Dialog -->
+    <aside id="lobby-ranking" class="lobby-ranking hidden" role="dialog" aria-labelledby="lobby-ranking-title">
+      <div class="panel">
+        <button id="lobby-ranking-close" class="link modal-x" title="Schließen" aria-label="Schließen">✕</button>
+        <h2 id="lobby-ranking-title">🏅 Rangliste</h2>
+        <table id="lobby-ranking-table" class="ranking">
+          <thead><tr><th>#</th><th>Spieler</th><th title="Summe je Spiel: (Punkte − Punkte des Letzten) × Spieleranzahl / 10">Wertung</th><th>Siege</th><th>Spiele</th><th>Ø Punkte</th><th>Best</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p id="lobby-ranking-empty" class="hint hidden">Noch keine Ranglisten-Spiele.</p>
+      </div>
+    </aside>
   </section>
 
   <!-- Spiel -->

@@ -117,12 +117,12 @@ function renderRoomList(list){
     ul.appendChild(li);
   }
 }
-async function loadRanking(){
+async function loadRanking(tableId = 'ranking-table', emptyId = 'ranking-empty'){
   const base = (typeof window.__BASE__ === 'string') ? window.__BASE__ : '';
   try {
     const res = await fetch(`${base}/api/ranking`, { cache:'no-store' });
     const d = await res.json();
-    const tb = $('ranking-table').querySelector('tbody'); tb.innerHTML = '';
+    const tb = $(tableId).querySelector('tbody'); tb.innerHTML = '';
     (d.players || []).forEach((p, i) => {
       const tr = document.createElement('tr');
       for (const v of [i+1, p.username, p.rating ?? 0, p.wins, p.games, p.avg, p.best ?? '–']){
@@ -130,7 +130,7 @@ async function loadRanking(){
       }
       tb.appendChild(tr);
     });
-    $('ranking-empty').classList.toggle('hidden', (d.players || []).length > 0);
+    $(emptyId).classList.toggle('hidden', (d.players || []).length > 0);
   } catch (e) { toast('Rangliste konnte nicht geladen werden.'); }
 }
 $('btn-ranking').onclick = () => {
@@ -152,6 +152,29 @@ if (/^[A-Z0-9]{4}$/.test(joinParam)) {
 function saveName(){ if (account) { myName = account.username; return; } myName = ($('name').value.trim() || 'Spieler').slice(0,20); localStorage.setItem('portriga_name', myName); }
 
 // ---------- Lobby ----------
+// Rangliste in der Lobby: auf großen Bildschirmen rechts neben dem Lobby-Panel,
+// auf kleinen Bildschirmen per Button als Dialog.
+let lobbyRankedShown = false;
+function loadLobbyRanking(){ loadRanking('lobby-ranking-table', 'lobby-ranking-empty'); }
+function setLobbyRankingOpen(open){
+  $('lobby-ranking').classList.toggle('open', open);
+  $('btn-lobby-ranking').textContent = open ? '🏅 Rangliste ausblenden' : '🏅 Rangliste anzeigen';
+  if (open) { loadLobbyRanking(); setTimeout(() => $('lobby-ranking-close').focus(), 30); }
+}
+function updateLobbyRanking(mode){
+  const ranked = mode === 'ranked';
+  $('screen-lobby').classList.toggle('ranked', ranked);
+  $('lobby-ranking').classList.toggle('hidden', !ranked);
+  $('btn-lobby-ranking').classList.toggle('hidden', !ranked);
+  if (ranked && !lobbyRankedShown) loadLobbyRanking();   // beim Wechsel auf Rangliste einmal laden
+  if (!ranked) setLobbyRankingOpen(false);
+  lobbyRankedShown = ranked;
+}
+$('btn-lobby-ranking').onclick = () => setLobbyRankingOpen(!$('lobby-ranking').classList.contains('open'));
+$('lobby-ranking-close').onclick = () => setLobbyRankingOpen(false);
+$('lobby-ranking').addEventListener('click', e => { if (e.target === $('lobby-ranking')) setLobbyRankingOpen(false); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('lobby-ranking').classList.contains('open')) setLobbyRankingOpen(false); });
+
 function renderLobby(m){
   show('lobby');
   $('lobby-code').textContent = m.code;
@@ -170,6 +193,7 @@ function renderLobby(m){
   $('lobby-mode-select').value = mode;
   $('btn-addbot').classList.toggle('hidden', mode === 'ranked');
   $('btn-rmbot').classList.toggle('hidden', mode === 'ranked');
+  updateLobbyRanking(mode);
   const ul = $('seat-list'); ul.innerHTML = '';
   const iAmAdmin = !!(m.seats.find(x => x.id===clientId) || {}).admin;
   m.seats.forEach(s => {

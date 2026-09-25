@@ -326,3 +326,17 @@ select option{background:#0b3d26;color:#fff}
 /* Werbung für den Matrix-Ankündigungsraum */
 .announce { text-align:center; margin:.6em 0; }
 .announce a { font-weight:600; word-break:break-all; color:var(--gold); }
+
+/* Rangliste in der Lobby bei Ranglisten-Spielen */
+.lobby-ranking{display:none}
+.lobby-ranking h2{margin-top:0}
+@media (min-width:1000px){
+  #screen-lobby.ranked{gap:16px;align-items:flex-start;padding-top:max(16px,4vh)}
+  #screen-lobby.ranked .lobby-ranking{display:block}
+  .lobby-ranking .panel{width:min(520px,44vw);max-height:92dvh;overflow:auto}
+  #btn-lobby-ranking, #lobby-ranking-close{display:none !important}
+}
+@media (max-width:999px){
+  .lobby-ranking.open{display:flex;position:fixed;inset:0;z-index:60;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.55)}
+  .lobby-ranking .panel{max-height:92dvh;overflow:auto}
+}
