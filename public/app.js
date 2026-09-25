@@ -4,6 +4,10 @@ const SUIT = {
   herz:{sym:'♥',color:'red'},   karo:{sym:'♦',color:'red'},
 };
 const $ = id => document.getElementById(id);
+// Früh deklarieren: toast() wird schon beim Laden aufgerufen (Direktlink ?join=…,
+// gepufferte Aktionen vor WS-Verbindung). Ein späteres `let` wirft sonst einen
+// TDZ-Fehler, der app.js abbricht (kein WebSocket, keine Raumliste, kein Login).
+let toastTimer;
 
 // persistente Client-ID für Reconnect
 let clientId = localStorage.getItem('portriga_cid');
@@ -468,7 +472,6 @@ function tickVote(){
 $('ov-home').onclick = () => { send({ type:'leaveRoom' }); };
 
 // ---------- Utils ----------
-let toastTimer;
 function toast(msg){
   const t=$('toast'); t.textContent=msg; t.classList.remove('hidden');
   clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.add('hidden'),2600);
