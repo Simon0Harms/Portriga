@@ -2,6 +2,10 @@
 /* Rangliste für Ranglisten-Räume (Issue #8).
  * Persistiert pro Konto: Wertungspunkte, Spiele, Siege, Punktesumme, Bestwert.
  * Wertung je Spiel: (Punkte - Punkte des Letzten) * Spieleranzahl / 10; der Letzte erhält 0.
+ * Zeiträume: ewig (all), laufendes Jahr (year), laufender Monat (month) und laufende Woche (week,
+ * ISO-8601, Mo–So). Werte liegen je Konto unter p.years['JJJJ'], p.months['JJJJ-MM'] bzw.
+ * p.weeks['JJJJ-Www'] (Serverzeit); Spiele vor Einführung
+ * der Zeiträume zählen nur in der ewigen Rangliste.
  * Datei: <dataDir>/ranking.json (atomar per tmp + rename geschrieben). */
 const fs = require('fs');
 const path = require('path');
@@ -10,6 +14,32 @@ const round1 = x => Math.round(x * 10) / 10;
 /** Wertungspunkte eines Spielers für ein Spiel. */
 function gameRating(score, lastScore, playerCount) {
   return round1((score - lastScore) * playerCount / 10);
+}
+
+const PERIODS = ['all', 'year', 'month', 'week'];
+const pad2 = n => String(n).padStart(2, '0');
+/** Schlüssel des Zeitraums, in den der Zeitpunkt ts fällt (all -> null). */
+function periodKey(period, ts = Date.now()) {
+  const d = new Date(ts);
+  if (period === 'year') return String(d.getFullYear());
+  if (period === 'month') return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+  if (period === 'week') {
+    // ISO-8601: Woche mit dem Donnerstag bestimmt das Jahr; Woche 1 enthält den 4. Januar
+    const t = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    t.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7));
+    const y = t.getFullYear();
+    const w = 1 + Math.round((t - new Date(y, 0, 4)) / 864e5 / 7 - (3 - ((new Date(y, 0, 4).getDay() + 6) % 7)) / 7);
+    return `${y}-W${pad2(w)}`;
+  }
+  return null;
+}
+const emptyStats = () => ({ games: 0, wins: 0, points: 0, best: null, rating: 0 });
+function addResult(st, score, won, rating) {
+  st.games += 1;
+  if (won) st.wins += 1;
+  st.points += score;
+  st.rating = round1((st.rating || 0) + rating);
+  st.best = st.best === null || st.best === undefined ? score : Math.max(st.best, score);
 }
 
 function createRanking(opts) {
@@ -31,9 +61,23 @@ function createRanking(opts) {
   }
 
   const cmp = (a, b) => b.rating - a.rating || b.wins - a.wins || b.avg - a.avg || b.games - a.games || a.username.localeCompare(b.username);
-  const view = (id, p) => ({ id, username: p.username, rating: p.rating || 0, games: p.games, wins: p.wins, points: p.points, best: p.best,
+  const view = (id, username, p) => ({ id, username, rating: p.rating || 0, games: p.games, wins: p.wins, points: p.points, best: p.best,
     avg: p.games ? Math.round((p.points / p.games) * 10) / 10 : 0 });
-  function sorted() { return Object.entries(db.players).map(([id, p]) => view(id, p)).sort(cmp); }
+  /** Werte eines Kontos für einen Zeitraum (null, wenn im Zeitraum nicht gespielt). */
+  function statsOf(p, period, key) {
+    if (period === 'year') return (p.years && p.years[key]) || null;
+    if (period === 'month') return (p.months && p.months[key]) || null;
+    if (period === 'week') return (p.weeks && p.weeks[key]) || null;
+    return p;
+  }
+  function sorted(period = 'all', key = periodKey(period)) {
+    const out = [];
+    for (const [id, p] of Object.entries(db.players)) {
+      const st = statsOf(p, period, key);
+      if (st && st.games) out.push(view(id, p.username, st));
+    }
+    return out.sort(cmp);
+  }
   /** Platz (1-basiert) je Konto-ID. */
   function ranks() { const m = new Map(); sorted().forEach((p, i) => m.set(p.id, i + 1)); return m; }
 
@@ -49,11 +93,14 @@ function createRanking(opts) {
     for (const r of valid) {
       const p = db.players[r.accountId] || (db.players[r.accountId] = { username: r.username, games: 0, wins: 0, points: 0, best: null, rating: 0 });
       p.username = r.username;
-      p.games += 1;
-      if (r.score === top) p.wins += 1;   // Gleichstand an der Spitze: alle gelten als Sieger
-      p.points += r.score;
-      p.rating = round1((p.rating || 0) + gameRating(r.score, last, n));
-      p.best = p.best === null ? r.score : Math.max(p.best, r.score);
+      const won = r.score === top;   // Gleichstand an der Spitze: alle gelten als Sieger
+      const rating = gameRating(r.score, last, n);
+      addResult(p, r.score, won, rating);
+      const y = periodKey('year', now), m = periodKey('month', now), w = periodKey('week', now);
+      p.years = p.years || {}; p.months = p.months || {}; p.weeks = p.weeks || {};
+      addResult(p.years[y] || (p.years[y] = emptyStats()), r.score, won, rating);
+      addResult(p.months[m] || (p.months[m] = emptyStats()), r.score, won, rating);
+      addResult(p.weeks[w] || (p.weeks[w] = emptyStats()), r.score, won, rating);
       p.lastPlayed = now;
     }
     save();
@@ -68,9 +115,12 @@ function createRanking(opts) {
     return true;
   }
 
-  /** Sortiert: Wertung, dann Siege, dann Ø-Punkte, dann Spiele. */
-  function top(limit = 50) {
-    return sorted().slice(0, limit).map(({ id, ...p }) => p);
+  /** Sortiert: Wertung, dann Siege, dann Ø-Punkte, dann Spiele.
+   * period: 'all' | 'year' | 'month' | 'week'; key optional (z. B. '2026' / '2026-09' / '2026-W39'), Standard = laufender Zeitraum. */
+  function top(limit = 50, period = 'all', key) {
+    if (!PERIODS.includes(period)) period = 'all';
+    const k = period === 'all' ? null : (key || periodKey(period));
+    return sorted(period, k).slice(0, limit).map(({ id, ...p }) => p);
   }
 
   function removeUser(id) { if (db.players[id]) { delete db.players[id]; save(); } }
@@ -78,4 +128,4 @@ function createRanking(opts) {
   return { recordGame, top, ranks, removeUser, file: FILE };
 }
 
-module.exports = { createRanking, gameRating };
+module.exports = { createRanking, gameRating, periodKey, PERIODS };

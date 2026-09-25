@@ -54,6 +54,7 @@
     '🏅 Rangliste ausblenden': '🏅 Hide leaderboard',
     '#': '#', 'Wertung': 'Rating', 'Summe je Spiel: (Punkte − Punkte des Letzten) × Spieleranzahl / 10': 'Sum per game: (points − points of last place) × number of players / 10', 'Siege': 'Wins', 'Spiele': 'Games', 'Ø Punkte': 'Avg. points', 'Best': 'Best',
     'Noch keine Ranglisten-Spiele.': 'No ranked games yet.',
+    'Ewig': 'All time', 'Dieses Jahr': 'This year', 'Dieser Monat': 'This month', 'Diese Woche': 'This week',
     '📖 Spielregeln': '📖 Rules',
     'Ideen oder Fehler gefunden?': 'Ideas or found a bug?',
     'Verbesserungsvorschläge auf GitHub': 'Suggestions on GitHub',

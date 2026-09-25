@@ -8,7 +8,7 @@ const { WebSocketServer } = require('ws');
 const { Game, setRanks, MAX_PLAYERS_LIMIT } = require('./game');
 const { botBid, botCardId } = require('./bots');
 const { createAccounts } = require('./accounts');
-const { createRanking } = require('./ranking');
+const { createRanking, periodKey, PERIODS } = require('./ranking');
 const { createAdmins } = require('./admins');
 const { createAnnouncer } = require('./announce');
 
@@ -113,7 +113,13 @@ const MODE_LABEL = { private: 'Privat', public: 'Öffentlich', ranked: 'Ranglist
 const ranking = createRanking({ dataDir: dataDirOf(CONFIG), onRankChanges: (ch) => accounts.notifyRankChanges(ch) });
 // Admin-Rolle: wird per Terminal vergeben (node admin-cli.js), siehe admins.js.
 const admins = createAdmins({ dataDir: dataDirOf(CONFIG) });
-const rankingHandler = (_req, res) => res.set('Cache-Control', 'no-store').json({ enabled: accounts.enabled, players: ranking.top(50) });
+// ?period=all|year|month|week (Standard: all), optional ?key=JJJJ, JJJJ-MM bzw. JJJJ-Www für vergangene Zeiträume
+const rankingHandler = (req, res) => {
+  const period = PERIODS.includes(req.query.period) ? req.query.period : 'all';
+  const re = period === 'year' ? /^\d{4}$/ : period === 'week' ? /^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/ : /^\d{4}-(0[1-9]|1[0-2])$/;
+  const key = period === 'all' ? null : (typeof req.query.key === 'string' && re.test(req.query.key) ? req.query.key : periodKey(period));
+  res.set('Cache-Control', 'no-store').json({ enabled: accounts.enabled, period, key, players: ranking.top(50, period, key) });
+};
 if (BASE) app.get(BASE + '/api/ranking', rankingHandler);
 app.get('/api/ranking', rankingHandler);
 

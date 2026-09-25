@@ -315,6 +315,9 @@ select{width:100%;margin-top:.3em;padding:.55em .6em;border-radius:9px;border:1p
 .mode-badge{margin-left:.5em;font-size:.8rem;color:var(--gold)}
 .room-list li .tag{margin-left:auto}
 .room-list li button{padding:.3em .8em}
+.rank-tabs{display:flex;gap:.8em;flex-wrap:wrap;margin:.3em 0}
+.rank-tabs button{opacity:.65}
+.rank-tabs button.active{opacity:1;font-weight:600;text-decoration:underline}
 .ranking{width:100%;border-collapse:collapse;font-size:.88rem;margin:.4em 0}
 .ranking th,.ranking td{padding:.3em .4em;text-align:left;border-bottom:1px solid rgba(255,255,255,.08)}
 .ranking td:nth-child(n+3),.ranking th:nth-child(n+3){text-align:right}

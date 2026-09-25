@@ -64,6 +64,7 @@
         <a id="announce-link" href="#" target="_blank" rel="noopener" data-no-i18n></a> angekündigt – tritt bei und verpasse keine Runde!</p>
       <div class="row"><button id="btn-ranking" class="link">🏅 Rangliste anzeigen</button></div>
       <div id="ranking-box" class="hidden">
+        <div class="rank-tabs" role="tablist" data-for="ranking-table"><button class="link active" data-period="all" role="tab">Ewig</button><button class="link" data-period="year" role="tab">Dieses Jahr</button><button class="link" data-period="month" role="tab">Dieser Monat</button><button class="link" data-period="week" role="tab">Diese Woche</button></div>
         <table id="ranking-table" class="ranking">
           <thead><tr><th>#</th><th>Spieler</th><th title="Summe je Spiel: (Punkte − Punkte des Letzten) × Spieleranzahl / 10">Wertung</th><th>Siege</th><th>Spiele</th><th>Ø Punkte</th><th>Best</th></tr></thead>
           <tbody></tbody>
@@ -78,6 +79,7 @@
     <aside id="home-ranking" class="home-ranking" aria-labelledby="home-ranking-title">
       <div class="panel">
         <h2 id="home-ranking-title">🏅 Rangliste</h2>
+        <div class="rank-tabs" role="tablist" data-for="home-ranking-table"><button class="link active" data-period="all" role="tab">Ewig</button><button class="link" data-period="year" role="tab">Dieses Jahr</button><button class="link" data-period="month" role="tab">Dieser Monat</button><button class="link" data-period="week" role="tab">Diese Woche</button></div>
         <table id="home-ranking-table" class="ranking">
           <thead><tr><th>#</th><th>Spieler</th><th title="Summe je Spiel: (Punkte − Punkte des Letzten) × Spieleranzahl / 10">Wertung</th><th>Siege</th><th>Spiele</th><th>Ø Punkte</th><th>Best</th></tr></thead>
           <tbody></tbody>
@@ -127,6 +129,7 @@
       <div class="panel">
         <button id="lobby-ranking-close" class="link modal-x" title="Schließen" aria-label="Schließen">✕</button>
         <h2 id="lobby-ranking-title">🏅 Rangliste</h2>
+        <div class="rank-tabs" role="tablist" data-for="lobby-ranking-table"><button class="link active" data-period="all" role="tab">Ewig</button><button class="link" data-period="year" role="tab">Dieses Jahr</button><button class="link" data-period="month" role="tab">Dieser Monat</button><button class="link" data-period="week" role="tab">Diese Woche</button></div>
         <table id="lobby-ranking-table" class="ranking">
           <thead><tr><th>#</th><th>Spieler</th><th title="Summe je Spiel: (Punkte − Punkte des Letzten) × Spieleranzahl / 10">Wertung</th><th>Siege</th><th>Spiele</th><th>Ø Punkte</th><th>Best</th></tr></thead>
           <tbody></tbody>

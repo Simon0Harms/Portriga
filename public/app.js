@@ -170,10 +170,12 @@ function renderRoomList(list){
     ul.appendChild(li);
   }
 }
+// Gewählter Zeitraum je Tabelle (ewig / laufendes Jahr / laufender Monat / laufende Woche)
+const rankPeriod = { 'ranking-table':'all', 'home-ranking-table':'all', 'lobby-ranking-table':'all' };
 async function loadRanking(tableId = 'ranking-table', emptyId = 'ranking-empty'){
   const base = (typeof window.__BASE__ === 'string') ? window.__BASE__ : '';
   try {
-    const res = await fetch(`${base}/api/ranking`, { cache:'no-store' });
+    const res = await fetch(`${base}/api/ranking?period=${encodeURIComponent(rankPeriod[tableId] || 'all')}`, { cache:'no-store' });
     const d = await res.json();
     const tb = $(tableId).querySelector('tbody'); tb.innerHTML = '';
     (d.players || []).forEach((p, i) => {
@@ -187,6 +189,17 @@ async function loadRanking(tableId = 'ranking-table', emptyId = 'ranking-empty')
   } catch (e) { toast('Rangliste konnte nicht geladen werden.'); }
 }
 refreshHomeRanking();
+document.querySelectorAll('.rank-tabs').forEach(tabs => {
+  const tableId = tabs.dataset.for, emptyId = tableId.replace('-table', '-empty');
+  tabs.querySelectorAll('button[data-period]').forEach(b => {
+    b.setAttribute('aria-selected', b.classList.contains('active') ? 'true' : 'false');
+    b.onclick = () => {
+      rankPeriod[tableId] = b.dataset.period;
+      tabs.querySelectorAll('button[data-period]').forEach(x => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-selected', on ? 'true' : 'false'); });
+      loadRanking(tableId, emptyId);
+    };
+  });
+});
 $('btn-ranking').onclick = () => {
   const box = $('ranking-box');
   const open = box.classList.toggle('hidden') === false;
