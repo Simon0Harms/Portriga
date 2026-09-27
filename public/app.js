@@ -457,9 +457,12 @@ function renderGame(m){
     $('ov-title').textContent = v.phase==='gameEnd' ? '🏆 Spielende' : `Runde ${v.roundNumber} beendet`;
     const sc = $('ov-scores'); sc.innerHTML='';
     const sorted = players.slice().sort((a,b)=>b.score-a.score);
+    // Gleichstand -> gleiche Platzierung (1, 1, 3 …); alle Führenden hervorheben
+    let rank = 0;
     sorted.forEach((p,i)=>{
-      const li=document.createElement('li'); if(i===0) li.className='lead';
-      li.innerHTML=`<span>${i+1}. ${escapeHtml(p.name)}${p.bot?' 🤖':''} <span class="hint">(Ansage ${p.bid==null?'–':p.bid}, ${p.tricks} Stiche)</span></span><span class="sc">${p.lastDelta==null?'':`<span class="delta ${p.lastDelta>=0?'pos':'neg'}">${p.lastDelta>0?'+':''}${p.lastDelta}</span> `}${p.score}</span>`;
+      if (i===0 || p.score!==sorted[i-1].score) rank = i+1;
+      const li=document.createElement('li'); if(rank===1) li.className='lead';
+      li.innerHTML=`<span>${rank}. ${escapeHtml(p.name)}${p.bot?' 🤖':''} <span class="hint">(Ansage ${p.bid==null?'–':p.bid}, ${p.tricks} Stiche)</span></span><span class="sc">${p.lastDelta==null?'':`<span class="delta ${p.lastDelta>=0?'pos':'neg'}">${p.lastDelta>0?'+':''}${p.lastDelta}</span> `}${p.score}</span>`;
       sc.appendChild(li);
     });
     $('ov-home').classList.toggle('hidden', v.phase!=='gameEnd');
