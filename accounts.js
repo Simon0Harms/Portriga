@@ -181,7 +181,7 @@ function createAccounts(opts) {
   function clearSession(res) {
     res.append('Set-Cookie', `${o.cookieName}=; Path=${cookiePath()}; HttpOnly; SameSite=Lax; Max-Age=0${o.cookieSecure ? '; Secure' : ''}`);
   }
-  function publicUser(u) { return u ? { id: u.id, username: u.username, mxid: u.mxid, hasPassword: !!u.hash, needsRelink: !!u.needsRelink, notifyRank: !!u.notifyRank, createdAt: u.createdAt } : null; }
+  function publicUser(u) { return u ? { id: u.id, username: u.username, mxid: u.mxid, hasPassword: !!u.hash, needsRelink: !!u.needsRelink, notifyRank: !!u.notifyRank, cardStyle: u.cardStyle === 'classic' ? 'classic' : 'modern', createdAt: u.createdAt } : null; }
 
   // ---- Outbox (App -> Sidecar) ----
   function enqueue(roomId, body, extra) {
@@ -522,6 +522,15 @@ function createAccounts(opts) {
       const b = req.body || {};
       if (typeof b.notifyRank !== 'boolean') return res.status(422).json({ error: 'Ungültige Einstellung.' });
       u.notifyRank = b.notifyRank; save();
+      res.json({ ok: true, user: publicUser(u) });
+    });
+
+    // Kartendesign (modern/klassisch) speichern
+    r.post('/me/cards', (req, res) => {
+      const u = req.user;
+      const v = (req.body || {}).cardStyle;
+      if (v !== 'modern' && v !== 'classic') return res.status(422).json({ error: 'Ungültige Einstellung.' });
+      u.cardStyle = v; save();
       res.json({ ok: true, user: publicUser(u) });
     });
 

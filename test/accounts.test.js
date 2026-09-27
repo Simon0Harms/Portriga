@@ -77,6 +77,10 @@ function wsSession(withCookie) {
     r = await req('/me/notify', { notifyRank: true }); assert.strictEqual(r.status, 200); assert.strictEqual(r.json.user.notifyRank, true);
     r = await req('/me/notify', { notifyRank: false }); assert.strictEqual(r.json.user.notifyRank, false);
     r = await req('/me/notify', { notifyRank: true }, false); assert.strictEqual(r.status, 401);
+    r = await req('/me/cards', { cardStyle: 'retro' }); assert.strictEqual(r.status, 422);
+    r = await req('/me/cards', { cardStyle: 'classic' }); assert.strictEqual(r.status, 200); assert.strictEqual(r.json.user.cardStyle, 'classic');
+    r = await req('/me/cards', { cardStyle: 'modern' }); assert.strictEqual(r.json.user.cardStyle, 'modern');
+    r = await req('/me/cards', { cardStyle: 'classic' }, false); assert.strictEqual(r.status, 401);
 
     // WebSocket mit Konto: Name aus dem Konto, Sitz verifiziert
     const a = await wsSession(true); await sleep(200);

@@ -346,10 +346,10 @@ const SUIT_PATH = {
   kreuz:'<circle cx="50" cy="28" r="19"/><circle cx="27" cy="58" r="19"/><circle cx="73" cy="58" r="19"/><circle cx="50" cy="52" r="11"/><path d="M47 58C47 78 42 88 34 95L66 95C58 88 53 78 53 58Z"/>'
 };
 function suitSvg(suit){ return `<svg viewBox="0 0 100 100" aria-hidden="true">${SUIT_PATH[suit]||''}</svg>`; }
-function cardEl(card, opts={}){
+function cardElModern(card, opts={}){
   const el = document.createElement('div');
   const face = /^(K|D|B)$/.test(card.rank);
-  el.className = 'card' + (SUIT[card.suit].color==='red'?' red':'') + (face?' face':'') + (card.rank.length>1?' wide':'');
+  el.className = 'card vc' + (SUIT[card.suit].color==='red'?' red':'') + (face?' face':'') + (card.rank.length>1?' wide':'');
   if (opts.win) el.classList.add('win');
   el.setAttribute('aria-label', `${SUIT[card.suit].sym} ${card.rank}`);
   const s = suitSvg(card.suit), r = `<b class="r">${card.rank}</b>`;
@@ -357,6 +357,32 @@ function cardEl(card, opts={}){
   if (opts.who!=null){ const w=document.createElement('div'); w.className='who'; w.textContent=opts.who; el.appendChild(w); }
   return el;
 }
+
+function cardElClassic(card, opts={}){
+  const el = document.createElement('div');
+  el.className = 'card ' + (SUIT[card.suit].color==='red'?'red':'');
+  if (opts.win) el.classList.add('win');
+  // Nur Bildkarten für A, K, D, B – Zahlenkarten bleiben Text-Karten
+  if (!/^(A|K|D|B)$/.test(card.rank)) {
+    el.innerHTML = `<div class="r">${card.rank}</div><div class="s">${SUIT[card.suit].sym}</div>`;
+    if (opts.who!=null){ const w=document.createElement('div'); w.className='who'; w.textContent=opts.who; el.appendChild(w); }
+    return el;
+  }
+  el.classList.add('img');
+  const img = document.createElement('img');
+  // Sprachabhängige Bilder: auf Englisch Bube/Dame mit J/Q-Index (cards/en/), Rest identisch
+  img.dataset.card = `${card.suit}-${card.rank}`;
+  img.src = cardSrc(img.dataset.card);
+  img.alt = `${SUIT[card.suit].sym} ${card.rank}`; img.draggable = false;
+  // Fallback auf Text-Darstellung, falls das Bild fehlt (z.B. abweichende Ränge per config)
+  img.onerror = () => { el.classList.remove('img'); img.insertAdjacentHTML('beforebegin', `<div class="r">${card.rank}</div><div class="s">${SUIT[card.suit].sym}</div>`); img.remove(); };
+  el.appendChild(img);
+  if (opts.who!=null){ const w=document.createElement('div'); w.className='who'; w.textContent=opts.who; el.appendChild(w); }
+  return el;
+}
+// Kartendesign: Konto-Einstellung (modern/klassisch); Gäste bekommen das Standarddesign.
+function cardStyle(){ return account && account.cardStyle === 'classic' ? 'classic' : 'modern'; }
+function cardEl(card, opts={}){ return cardStyle() === 'classic' ? cardElClassic(card, opts) : cardElModern(card, opts); }
 
 function renderGame(m){
   show('game');
@@ -1017,6 +1043,7 @@ function openAcct(view){
     $('rl-pw-label').classList.toggle('hidden', !account.hasPassword);
     $('rl-pw').value = ''; setMsg('rl-msg','');
     $('set-notify-rank').checked = !!account.notifyRank; setMsg('notify-msg','');
+    { const c = document.querySelector(`input[name="set-cards"][value="${cardStyle()}"]`); if (c) c.checked = true; setMsg('cards-msg',''); }
     if (!rlToken) showRlStep(1);
   }
 }
@@ -1155,6 +1182,18 @@ $('set-notify-rank').onchange = async () => {
   } catch (e) { el.checked = !on; setMsg('notify-msg', e.message, 'bad'); }
   el.disabled = false;
 };
+
+// --- Kartendesign ---
+document.querySelectorAll('input[name="set-cards"]').forEach(el => el.onchange = async () => {
+  const val = el.value, prev = cardStyle();
+  document.querySelectorAll('input[name="set-cards"]').forEach(x => x.disabled = true);
+  try {
+    const j = await api('/me/cards', { cardStyle: val });
+    account = j.user; setMsg('cards-msg', 'Kartendesign gespeichert.', 'ok');
+    if (lastState && !lastState.lobby) renderGame(lastState);
+  } catch (e) { document.querySelector(`input[name="set-cards"][value="${prev}"]`).checked = true; setMsg('cards-msg', e.message, 'bad'); }
+  document.querySelectorAll('input[name="set-cards"]').forEach(x => x.disabled = false);
+});
 
 // --- Matrix-Konto / -Chat ändern ---
 function showRlStep(n){ $('rl-step1').classList.toggle('hidden', n !== 1); $('rl-step2').classList.toggle('hidden', n !== 2); }
