@@ -337,25 +337,23 @@ function fitSuitGaps(hand){
 }
 window.addEventListener('resize', ()=>{ const h=$('myhand'); if (h) fitSuitGaps(h); });
 
+// Kartendesign wie in den Regelvideos: Vektor-Karte mit Eckindizes und großem Rang + Farbsymbol.
+// Rang-Texte tragen die Klasse "r" -> i18n übersetzt D/B automatisch zu Q/J.
+const SUIT_PATH = {
+  herz:'<path d="M50 90C47 86 8 60 8 33C8 18 19 8 32 8C41 8 47 13 50 20C53 13 59 8 68 8C81 8 92 18 92 33C92 60 53 86 50 90Z"/>',
+  karo:'<path d="M50 4C60 22 74 38 90 50C74 62 60 78 50 96C40 78 26 62 10 50C26 38 40 22 50 4Z"/>',
+  pik:'<path d="M50 6C56 22 90 40 90 62C90 76 80 84 68 84C60 84 54 80 52 75C53 84 57 90 64 95L36 95C43 90 47 84 48 75C46 80 40 84 32 84C20 84 10 76 10 62C10 40 44 22 50 6Z"/>',
+  kreuz:'<circle cx="50" cy="28" r="19"/><circle cx="27" cy="58" r="19"/><circle cx="73" cy="58" r="19"/><circle cx="50" cy="52" r="11"/><path d="M47 58C47 78 42 88 34 95L66 95C58 88 53 78 53 58Z"/>'
+};
+function suitSvg(suit){ return `<svg viewBox="0 0 100 100" aria-hidden="true">${SUIT_PATH[suit]||''}</svg>`; }
 function cardEl(card, opts={}){
   const el = document.createElement('div');
-  el.className = 'card ' + (SUIT[card.suit].color==='red'?'red':'');
+  const face = /^(K|D|B)$/.test(card.rank);
+  el.className = 'card' + (SUIT[card.suit].color==='red'?' red':'') + (face?' face':'') + (card.rank.length>1?' wide':'');
   if (opts.win) el.classList.add('win');
-  // Nur Bildkarten für A, K, D, B – Zahlenkarten bleiben Text-Karten
-  if (!/^(A|K|D|B)$/.test(card.rank)) {
-    el.innerHTML = `<div class="r">${card.rank}</div><div class="s">${SUIT[card.suit].sym}</div>`;
-    if (opts.who!=null){ const w=document.createElement('div'); w.className='who'; w.textContent=opts.who; el.appendChild(w); }
-    return el;
-  }
-  el.classList.add('img');
-  const img = document.createElement('img');
-  // Sprachabhängige Bilder: auf Englisch Bube/Dame mit J/Q-Index (cards/en/), Rest identisch
-  img.dataset.card = `${card.suit}-${card.rank}`;
-  img.src = cardSrc(img.dataset.card);
-  img.alt = `${SUIT[card.suit].sym} ${card.rank}`; img.draggable = false;
-  // Fallback auf Text-Darstellung, falls das Bild fehlt (z.B. abweichende Ränge per config)
-  img.onerror = () => { el.classList.remove('img'); img.insertAdjacentHTML('beforebegin', `<div class="r">${card.rank}</div><div class="s">${SUIT[card.suit].sym}</div>`); img.remove(); };
-  el.appendChild(img);
+  el.setAttribute('aria-label', `${SUIT[card.suit].sym} ${card.rank}`);
+  const s = suitSvg(card.suit), r = `<b class="r">${card.rank}</b>`;
+  el.innerHTML = `<div class="ci tl">${r}${s}</div><div class="cc">${r}${s}</div><div class="ci br">${r}${s}</div>`;
   if (opts.who!=null){ const w=document.createElement('div'); w.className='who'; w.textContent=opts.who; el.appendChild(w); }
   return el;
 }
