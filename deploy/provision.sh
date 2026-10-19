@@ -75,6 +75,8 @@ echo ">> systemd-Dienst einrichten…"
 install -m 0644 "$APP_DIR/deploy/portriga.service" /etc/systemd/system/portriga.service
 systemctl daemon-reload
 systemctl enable --now portriga
+# Updater: portriga-update (nur bei git-Checkout sinnvoll)
+install -m 0755 "$APP_DIR/deploy/update.sh" /usr/local/bin/portriga-update
 sleep 1
 systemctl --no-pager --full status portriga | head -n 6 || true
 

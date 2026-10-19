@@ -246,7 +246,20 @@ pct exec 140 -- systemctl status portriga
 pct exec 140 -- journalctl -u portriga -f
 pct exec 140 -- systemctl restart portriga
 ```
-Aktualisieren: neue Dateien nach `/opt/portriga` bringen, dann
+Aktualisieren (bei Installation per Git, Weg 2a):
+```bash
+pct exec 140 -- portriga-update          # neuester Commit des installierten Branches
+pct exec 140 -- portriga-update v1.2.0   # bestimmter Tag oder Commit
+```
+Das Skript (`deploy/update.sh`, von `provision.sh` als `/usr/local/bin/portriga-update` installiert)
+sichert vorher `config.json`, `portriga.env`, `turnserver.conf`, `data/` und `matrix/` nach
+`/opt/portriga/backup/` (die letzten 10), installiert Abhängigkeiten nur bei geändertem `package-lock.json`,
+startet den Dienst neu und prüft `/health`. Startet die neue Version nicht, geht es automatisch auf den
+alten Stand zurück. Laufende Spiele liegen nur im Speicher und enden beim Neustart.
+Ältere Installationen ohne den Befehl: einmalig `bash /opt/portriga/deploy/update.sh` nach einem
+`git -C /opt/portriga pull` ausführen – danach ist `portriga-update` vorhanden.
+
+Ohne Git: neue Dateien nach `/opt/portriga` bringen, dann
 `systemctl restart portriga` (bei geänderten Dependencies vorher `npm ci --omit=dev`).
 
 ### HTTPS
@@ -572,7 +585,20 @@ pct exec 140 -- systemctl status portriga
 pct exec 140 -- journalctl -u portriga -f
 pct exec 140 -- systemctl restart portriga
 ```
-Updating: bring the new files to `/opt/portriga`, then
+Updating (installed via git, way 2a):
+```bash
+pct exec 140 -- portriga-update          # newest commit of the installed branch
+pct exec 140 -- portriga-update v1.2.0   # a specific tag or commit
+```
+The script (`deploy/update.sh`, installed by `provision.sh` as `/usr/local/bin/portriga-update`)
+first backs up `config.json`, `portriga.env`, `turnserver.conf`, `data/` and `matrix/` to
+`/opt/portriga/backup/` (last 10 kept), installs dependencies only when `package-lock.json` changed,
+restarts the service and checks `/health`. If the new version does not start, it rolls back automatically.
+Running games live in memory only and end with the restart.
+Older installations without the command: after a `git -C /opt/portriga pull`, run
+`bash /opt/portriga/deploy/update.sh` once – afterwards `portriga-update` exists.
+
+Without git: bring the new files to `/opt/portriga`, then
 `systemctl restart portriga` (if dependencies changed, run `npm ci --omit=dev` first).
 
 ### HTTPS

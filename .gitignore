@@ -6,3 +6,4 @@ config.json
 portriga.env
 turnserver.conf
 data/
+backup/
