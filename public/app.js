@@ -354,7 +354,7 @@ function cardElModern(card, opts={}){
   el.setAttribute('aria-label', `${SUIT[card.suit].sym} ${card.rank}`);
   const s = suitSvg(card.suit), r = `<b class="r">${card.rank}</b>`;
   el.innerHTML = `<div class="ci tl">${r}${s}</div><div class="cc">${r}${s}</div><div class="ci br">${r}${s}</div>`;
-  if (opts.who!=null){ const w=document.createElement('div'); w.className='who'; w.textContent=opts.who; el.appendChild(w); }
+  if (opts.who!=null){ const w=document.createElement('div'); w.className='who'; w.textContent=opts.who; w.title=opts.who; el.appendChild(w); }
   return el;
 }
 
@@ -365,7 +365,7 @@ function cardElClassic(card, opts={}){
   // Nur Bildkarten für A, K, D, B – Zahlenkarten bleiben Text-Karten
   if (!/^(A|K|D|B)$/.test(card.rank)) {
     el.innerHTML = `<div class="r">${card.rank}</div><div class="s">${SUIT[card.suit].sym}</div>`;
-    if (opts.who!=null){ const w=document.createElement('div'); w.className='who'; w.textContent=opts.who; el.appendChild(w); }
+    if (opts.who!=null){ const w=document.createElement('div'); w.className='who'; w.textContent=opts.who; w.title=opts.who; el.appendChild(w); }
     return el;
   }
   el.classList.add('img');
@@ -377,7 +377,7 @@ function cardElClassic(card, opts={}){
   // Fallback auf Text-Darstellung, falls das Bild fehlt (z.B. abweichende Ränge per config)
   img.onerror = () => { el.classList.remove('img'); img.insertAdjacentHTML('beforebegin', `<div class="r">${card.rank}</div><div class="s">${SUIT[card.suit].sym}</div>`); img.remove(); };
   el.appendChild(img);
-  if (opts.who!=null){ const w=document.createElement('div'); w.className='who'; w.textContent=opts.who; el.appendChild(w); }
+  if (opts.who!=null){ const w=document.createElement('div'); w.className='who'; w.textContent=opts.who; w.title=opts.who; el.appendChild(w); }
   return el;
 }
 // Kartendesign: Konto-Einstellung (modern/klassisch); Gäste bekommen das Standarddesign.

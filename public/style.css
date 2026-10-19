@@ -395,3 +395,6 @@ select option{background:#0b3d26;color:#fff}
   .home-ranking .panel{width:min(520px,44vw);max-height:92dvh;overflow:auto}
   #screen-home .row:has(#btn-ranking), #ranking-box{display:none !important}
 }
+/* Lange Namen nicht in die Nachbarkarte laufen lassen: auf Kartenbreite + Gap kürzen
+   (voller Name als Tooltip). */
+.card .who{max-width:calc(100% + 6px);overflow:hidden;text-overflow:ellipsis}
