@@ -381,6 +381,9 @@ select option{background:#0b3d26;color:#fff}
    damit sie bei großen Karten nicht in den Gegenspieler bzw. die Überschrift ragen. */
 #trick-cards{padding-top:calc(20px * var(--card-scale,1))}
 .lt-cards{padding-top:calc(20px * var(--card-scale,1))}
+/* Umbrochene Kartenreihen: Abstand nach oben für den Namen (.who) der unteren Reihe,
+   sonst überlappt er die Karten der Reihe darüber. */
+#trick-cards,.lt-cards{row-gap:calc(22px * var(--card-scale,1))}
 @media (max-height:900px){ #trick-cards{padding-top:calc(16px * var(--card-scale,1))} }
 
 /* Rangliste auf der Startseite: bei genug Platz rechts neben dem Startpanel (wie in der Ranglisten-Lobby) */
