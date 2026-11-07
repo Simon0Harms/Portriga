@@ -142,6 +142,11 @@ button.link{background:none;border:none;color:var(--accent);padding:.3em;text-de
 #myhand .card.illegal{opacity:.4;cursor:not-allowed;filter:grayscale(.5)}
 
 #overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:20;padding:16px}
+/* Ergebnisliste scrollbar, wenn sie nicht auf den Bildschirm passt (#12);
+   Titel, Abstimmung und Buttons bleiben sichtbar. */
+#overlay .panel{display:flex;flex-direction:column;max-height:100%;min-height:0;overflow:hidden}
+#overlay .panel>*{flex-shrink:0}
+#overlay #ov-scores{flex:1 1 auto;min-height:3em;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .scoreboard{list-style:none;padding:0;margin:.5em 0}
 .scoreboard li{display:flex;justify-content:space-between;padding:.4em .6em;border-radius:8px;background:rgba(255,255,255,.06);margin:.25em 0}
 .scoreboard li.lead{background:rgba(231,199,107,.2)}
